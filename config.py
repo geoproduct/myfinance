@@ -10,8 +10,8 @@ def _get_vapid_keys():
     2. .vapid_keys.json 파일                          ← 로컬 개발 시
     3. 새로 생성 후 파일 저장                          ← 최초 실행 시
     """
-    # 1) 환경변수 우선
-    env_priv = os.environ.get('VAPID_PRIVATE_KEY', '')
+    # 1) 환경변수 우선 (Railway는 \n을 리터럴로 저장하므로 실제 줄바꿈으로 변환)
+    env_priv = os.environ.get('VAPID_PRIVATE_KEY', '').replace('\\n', '\n')
     env_pub  = os.environ.get('VAPID_PUBLIC_KEY',  '')
     if env_priv and env_pub:
         return {'private_key': env_priv, 'public_key': env_pub}
