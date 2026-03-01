@@ -33,7 +33,7 @@ def init_oauth(app):
             access_token_url='https://kauth.kakao.com/oauth/token',
             authorize_url='https://kauth.kakao.com/oauth/authorize',
             api_base_url='https://kapi.kakao.com',
-            client_kwargs={'scope': 'profile_nickname account_email'},
+            client_kwargs={'scope': 'profile_nickname'},
         )
 
 
