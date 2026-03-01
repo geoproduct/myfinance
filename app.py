@@ -4,6 +4,7 @@ from sqlalchemy import desc
 from config import Config
 from models import db, User, Category, Notification
 from models import EXPENSE_CATEGORIES, INCOME_CATEGORIES
+from werkzeug.middleware.proxy_fix import ProxyFix
 import os, random
 
 login_manager = LoginManager()
@@ -12,6 +13,9 @@ login_manager = LoginManager()
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+
+    # Railway/Nginx 등 리버스 프록시 뒤에서 https:// URL 올바르게 생성
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(os.path.join(app.root_path, 'instance'), exist_ok=True)
