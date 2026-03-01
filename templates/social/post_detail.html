@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+{% block title %}게시글 · MyFinance{% endblock %}
+{% block page_title %}게시글 상세{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-7">
+
+  <!-- 게시글 -->
+  <div class="post-card mb-4">
+    <div class="post-hd">
+      <div class="av">{{ post.user.nickname[0] if (not post.is_anonymous and post.user.nickname) else '익' }}</div>
+      <div>
+        <div class="fw-600" style="font-size:.9rem">
+          {{ '익명' if post.is_anonymous else post.user.nickname }}
+        </div>
+        <div class="text-muted" style="font-size:.76rem">{{ post.created_at.strftime('%Y.%m.%d %H:%M') }}</div>
+      </div>
+      {% for key, icon, label in pcats %}
+        {% if key == post.category %}
+        <span class="post-cat">{{ icon }} {{ label }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="post-body" style="white-space:pre-wrap">{{ post.content }}</div>
+    <div class="post-ft">
+      <button class="like-btn {% if liked %}on{% endif %}"
+              onclick="toggleLike({{ post.id }}, this)">
+        <i class="{% if liked %}fa-solid{% else %}fa-regular{% endif %} fa-heart"></i>
+        <span id="lkCount">{{ post.likes }}</span>
+      </button>
+      <span class="text-muted" style="font-size:.83rem">
+        <i class="fa-regular fa-comment"></i> {{ post.comments.count() }}
+      </span>
+      {% if post.user_id == current_user.id %}
+      <form method="post" action="{{ url_for('social.delete_post', pid=post.id) }}"
+            onsubmit="return confirm('삭제할까요?')" class="ms-auto">
+        <button class="btn btn-xs btn-outline-danger">삭제</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 댓글 목록 -->
+  <div class="card mb-4">
+    <div class="card-hd">💬 댓글 {{ post.comments.count() }}개</div>
+    <div class="card-bd">
+      {% if top_comments %}
+        {% for c in top_comments %}
+        <div class="cmt-item">
+          <div class="av-sm">{{ c.user.nickname[0] if c.user.nickname else 'U' }}</div>
+          <div class="cmt-box flex-fill">
+            <div class="cmt-author">{{ c.user.nickname or '사용자' }}</div>
+            <div class="cmt-txt">{{ c.content }}</div>
+            <div class="cmt-ft">
+              <span class="text-muted" style="font-size:.72rem">{{ c.created_at.strftime('%m/%d %H:%M') }}</span>
+              <button class="btn btn-link btn-xs p-0 ms-2 text-muted"
+                      onclick="toggleReply('r{{ c.id }}')">답글</button>
+            </div>
+            <!-- 답글 작성 폼 (숨김) -->
+            <div id="r{{ c.id }}" style="display:none;margin-top:8px">
+              <form method="post" action="{{ url_for('social.add_comment', pid=post.id) }}" class="d-flex gap-2">
+                <input type="hidden" name="parent_id" value="{{ c.id }}">
+                <input type="text" name="content" class="form-control form-control-sm" placeholder="답글..." required>
+                <button type="submit" class="btn btn-primary btn-sm">전송</button>
+              </form>
+            </div>
+          </div>
+        </div>
+        <!-- 대댓글 -->
+        {% if c.replies %}
+          {% for r in c.replies %}
+          <div class="reply-item">
+            <div class="av-sm" style="background:linear-gradient(135deg,var(--orange),var(--red))">
+              {{ r.user.nickname[0] if r.user.nickname else 'U' }}
+            </div>
+            <div class="cmt-box flex-fill">
+              <div class="cmt-author">{{ r.user.nickname or '사용자' }}</div>
+              <div class="cmt-txt">{{ r.content }}</div>
+              <div class="cmt-ft">
+                <span class="text-muted" style="font-size:.72rem">{{ r.created_at.strftime('%m/%d %H:%M') }}</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        {% endif %}
+        {% endfor %}
+      {% else %}
+        <div class="empty-st" style="padding:24px">
+          <i class="fa-regular fa-comment"></i> 첫 댓글을 남겨보세요
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 댓글 작성 -->
+  <div class="card">
+    <div class="card-bd">
+      <form method="post" action="{{ url_for('social.add_comment', pid=post.id) }}" class="d-flex gap-2">
+        <div class="av flex-shrink-0">{{ current_user.nickname[0] if current_user.nickname else 'U' }}</div>
+        <input type="text" name="content" class="form-control" placeholder="댓글을 입력하세요..." required>
+        <button type="submit" class="btn btn-primary">전송</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="mt-3">
+    <a href="{{ url_for('social.index') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left me-1"></i>목록으로
+    </a>
+  </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleLike(pid, btn) {
+  fetch(`/social/post/${pid}/like`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      btn.classList.toggle('on', d.liked);
+      btn.querySelector('i').className = d.liked ? 'fa-solid fa-heart' : 'fa-regular fa-heart';
+      document.getElementById('lkCount').textContent = d.likes;
+    });
+}
+function toggleReply(id) {
+  const el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+</script>
+{% endblock %}

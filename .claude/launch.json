@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "MyFinance",
+      "runtimeExecutable": "C:/Users/master/AppData/Local/Programs/Python/Python311/python.exe",
+      "runtimeArgs": ["app.py"],
+      "port": 5001
+    }
+  ]
+}

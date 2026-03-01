@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}글쓰기 · MyFinance{% endblock %}
+{% block page_title %}글쓰기{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-7">
+<div class="card">
+  <div class="card-hd">✏️ 새 게시글</div>
+  <div class="card-bd">
+    <form method="post">
+      <!-- 카테고리 -->
+      <div class="mb-3">
+        <label class="form-label fw-600">카테고리 <span class="text-danger">*</span></label>
+        <div class="d-flex gap-2 flex-wrap">
+          {% for key, icon, label in pcats %}
+          <label class="d-flex align-items-center gap-1" style="cursor:pointer">
+            <input type="radio" name="category" value="{{ key }}"
+                   {% if loop.first %}checked{% endif %}
+                   class="form-check-input">
+            <span>{{ icon }} {{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- 내용 -->
+      <div class="mb-3">
+        <label class="form-label fw-600">내용 <span class="text-danger">*</span></label>
+        <textarea name="content" class="form-control" rows="8"
+                  placeholder="재테크 팁, 투자 경험, 궁금한 점을 공유해 보세요. (5자 이상)" required></textarea>
+      </div>
+
+      <!-- 익명 -->
+      <div class="mb-4">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="is_anonymous" id="anonCheck">
+          <label class="form-check-label text-muted" for="anonCheck" style="font-size:.88rem">
+            익명으로 게시
+          </label>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary flex-fill">게시하기</button>
+        <a href="{{ url_for('social.index') }}" class="btn btn-outline-secondary">취소</a>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}

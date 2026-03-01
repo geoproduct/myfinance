@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}설정 · MyFinance{% endblock %}
+{% block page_title %}계정 설정{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- 프로필 수정 -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-hd"><i class="fa-solid fa-user me-2"></i>프로필 수정</div>
+      <div class="card-bd">
+        <form method="post" action="{{ url_for('auth.settings') }}">
+          <input type="hidden" name="action" value="profile">
+          <div class="mb-3 text-center">
+            <div class="av mx-auto mb-2" style="width:64px;height:64px;font-size:1.5rem">
+              {{ current_user.nickname[0] if current_user.nickname else 'U' }}
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-600">닉네임</label>
+            <input type="text" name="nickname" class="form-control"
+                   value="{{ current_user.nickname or '' }}" maxlength="10">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-600">월 소득 (원)</label>
+            <div class="amt-wrap">
+              <input type="text" name="monthly_income" class="form-control pe-5"
+                     value="{{ '{:,.0f}'.format(current_user.monthly_income) if current_user.monthly_income else '' }}"
+                     oninput="fmtNum(this)" placeholder="0">
+              <span class="amt-unit">원</span>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">저장</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 비밀번호 변경 -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-hd"><i class="fa-solid fa-lock me-2"></i>비밀번호 변경</div>
+      <div class="card-bd">
+        <form method="post" action="{{ url_for('auth.settings') }}">
+          <input type="hidden" name="action" value="password">
+          <div class="mb-3">
+            <label class="form-label fw-600">현재 비밀번호</label>
+            <input type="password" name="old_pw" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-600">새 비밀번호</label>
+            <input type="password" name="new_pw" class="form-control" minlength="8" required>
+          </div>
+          <div class="mb-4">
+            <label class="form-label fw-600">새 비밀번호 확인</label>
+            <input type="password" name="new_pw2" class="form-control" required>
+          </div>
+          <button type="submit" class="btn btn-outline-primary w-100">변경</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 계정 정보 -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-hd"><i class="fa-solid fa-circle-info me-2"></i>계정 정보</div>
+      <div class="card-bd">
+        <table class="table table-borderless mb-0" style="font-size:.9rem">
+          <tr>
+            <td class="text-muted" style="width:120px">이메일</td>
+            <td>{{ current_user.email }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">가입일</td>
+            <td>{{ current_user.created_at.strftime('%Y년 %m월 %d일') }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">로그인 방식</td>
+            <td>{{ {'email':'이메일','google':'구글','kakao':'카카오'}.get(current_user.provider,'이메일') }}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

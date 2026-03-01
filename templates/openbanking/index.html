@@ -1,0 +1,250 @@
+{% extends 'base.html' %}
+{% block title %}오픈뱅킹 · MyFinance{% endblock %}
+{% block page_title %}오픈뱅킹 자산 연동{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+  <!-- 상단 안내 배너 -->
+  <div class="col-12">
+    <div class="card" style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);color:#fff;border:none">
+      <div class="card-body d-flex align-items-center gap-3 py-3">
+        <div style="font-size:2rem">🏦</div>
+        <div>
+          <div class="fw-700" style="font-size:1.05rem">오픈뱅킹으로 계좌를 연결하세요</div>
+          <div style="font-size:.85rem;opacity:.85">연결 후 거래내역을 자동으로 가져와 가계부에 반영됩니다. (Mock 데모 환경)</div>
+        </div>
+        <div class="ms-auto text-end" style="font-size:.78rem;opacity:.7">
+          <i class="fa-solid fa-shield-halved me-1"></i>금융결제원 오픈뱅킹 API 구조 기반
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 왼쪽: 연결된 계좌 목록 -->
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-700 mb-0"><i class="fa-solid fa-link me-2 text-primary"></i>연결된 계좌</h6>
+          <span class="badge bg-primary rounded-pill">{{ linked | length }}개</span>
+        </div>
+
+        {% if linked %}
+          {% for acc in linked %}
+          <div class="ob-card mb-3" id="acc-{{ acc.id }}">
+            <div class="ob-header d-flex align-items-center gap-3">
+              <div class="ob-icon">{{ banks[acc.bank_code][0] if acc.bank_code in banks else '🏦' }}</div>
+              <div class="flex-grow-1">
+                <div class="fw-700">{{ acc.bank_name }}</div>
+                <div class="text-muted" style="font-size:.82rem">
+                  {{ '입출금' if acc.account_type == 'checking' else ('저축' if acc.account_type == 'savings' else '신용카드') }}
+                  · {{ acc.account_num }}
+                </div>
+              </div>
+              <div class="text-end">
+                <div class="fw-700 text-primary" id="bal-{{ acc.id }}">{{ '{:,.0f}'.format(acc.balance) }}원</div>
+                <div class="text-muted" style="font-size:.75rem">
+                  {% if acc.last_sync %}
+                    최근 동기화: {{ acc.last_sync.strftime('%m/%d %H:%M') }}
+                  {% else %}
+                    미동기화
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            <div class="ob-actions d-flex gap-2 mt-3">
+              <!-- 잔액 새로고침 -->
+              <button class="btn btn-sm btn-outline-secondary flex-fill" onclick="refreshBalance({{ acc.id }})">
+                <i class="fa-solid fa-rotate me-1"></i>잔액조회
+              </button>
+              <!-- 거래내역 동기화 -->
+              <form method="post" action="{{ url_for('openbanking.sync_account', aid=acc.id) }}" style="flex:1">
+                <button type="submit" class="btn btn-sm btn-outline-primary w-100"
+                        onclick="return confirm('{{ acc.bank_name }} 거래내역을 동기화할까요?')">
+                  <i class="fa-solid fa-cloud-arrow-down me-1"></i>동기화
+                </button>
+              </form>
+              <!-- 연결 해제 -->
+              <form method="post" action="{{ url_for('openbanking.unlink_account', aid=acc.id) }}" style="flex:1">
+                <button type="submit" class="btn btn-sm btn-outline-danger w-100"
+                        onclick="return confirm('{{ acc.bank_name }} 계좌 연결을 해제할까요?')">
+                  <i class="fa-solid fa-trash me-1"></i>해제
+                </button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+
+          <!-- 총 연결 잔액 -->
+          <div class="p-3 rounded-3 mt-2" style="background:var(--bg2)">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-muted">연결 계좌 총 잔액</span>
+              <span class="fw-700 text-primary fs-5">
+                {{ '{:,.0f}'.format(linked | sum(attribute='balance')) }}원
+              </span>
+            </div>
+          </div>
+
+        {% else %}
+          <div class="text-center py-5 text-muted">
+            <i class="fa-solid fa-building-columns fa-3x mb-3" style="color:#d1d5db"></i>
+            <p class="mb-0">연결된 계좌가 없습니다.<br>오른쪽에서 은행을 선택해 연결하세요.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 오른쪽: 은행 연결 폼 -->
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-body">
+        <h6 class="fw-700 mb-3"><i class="fa-solid fa-plus-circle me-2 text-success"></i>계좌 연결하기</h6>
+        <form method="post" action="{{ url_for('openbanking.link_account') }}">
+          <!-- 은행 선택 그리드 -->
+          <div class="mb-3">
+            <label class="form-label fw-600">은행 선택</label>
+            <input type="hidden" name="bank_code" id="bankCode" required>
+            <div class="bank-grid">
+              {% for code, (icon, name) in banks.items() %}
+              <div class="bank-chip" data-code="{{ code }}" onclick="pickBank(this)">
+                <span class="bi">{{ icon }}</span>
+                <span>{{ name }}</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- 계좌 유형 -->
+          <div class="mb-4">
+            <label class="form-label fw-600">계좌 유형</label>
+            <div class="d-flex gap-2">
+              {% for val, label in [('checking','입출금'), ('savings','저축/정기'), ('credit','신용카드')] %}
+              <label class="acct-type-label flex-fill">
+                <input type="radio" name="account_type" value="{{ val }}" {% if loop.first %}checked{% endif %}>
+                <span>{{ label }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary w-100 py-2 fw-700" id="linkBtn" disabled>
+            <i class="fa-solid fa-link me-2"></i>계좌 연결
+          </button>
+        </form>
+
+        <!-- 안내 -->
+        <div class="mt-3 p-3 rounded-3" style="background:#f0fdf4;border:1px solid #bbf7d0">
+          <div class="fw-600 mb-1" style="font-size:.83rem;color:#16a34a">
+            <i class="fa-solid fa-circle-info me-1"></i>데모 안내
+          </div>
+          <ul class="mb-0 ps-3" style="font-size:.80rem;color:#15803d">
+            <li>실제 은행 계좌 정보가 사용되지 않습니다</li>
+            <li>Mock 잔액과 거래내역이 생성됩니다</li>
+            <li>동기화 시 거래내역이 가계부에 추가됩니다</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 동기화 현황 카드 -->
+    {% if linked %}
+    <div class="card mt-3">
+      <div class="card-body">
+        <h6 class="fw-700 mb-3"><i class="fa-solid fa-chart-bar me-2 text-info"></i>동기화 현황</h6>
+        {% for acc in linked %}
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span>{{ banks[acc.bank_code][0] if acc.bank_code in banks else '🏦' }}</span>
+          <span style="font-size:.85rem" class="flex-grow-1">{{ acc.bank_name }}</span>
+          {% if acc.last_sync %}
+          <span class="badge bg-success-subtle text-success">
+            <i class="fa-solid fa-circle-check me-1"></i>동기화됨
+          </span>
+          {% else %}
+          <span class="badge bg-warning-subtle text-warning">
+            <i class="fa-solid fa-circle-exclamation me-1"></i>미동기화
+          </span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.ob-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  transition: box-shadow .2s;
+}
+.ob-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+.ob-icon { font-size: 1.8rem; }
+.bank-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .5rem;
+}
+.bank-chip {
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: .5rem .4rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all .15s;
+  font-size: .78rem;
+  font-weight: 600;
+}
+.bank-chip:hover { border-color: var(--primary); background: #f0f4ff; }
+.bank-chip.on { border-color: var(--primary); background: #eff3ff; color: var(--primary); }
+.bank-chip .bi { display: block; font-size: 1.3rem; margin-bottom: .2rem; }
+.acct-type-label {
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: .4rem;
+  text-align: center;
+  cursor: pointer;
+  font-size: .82rem;
+  font-weight: 600;
+}
+.acct-type-label input { display: none; }
+.acct-type-label:has(input:checked) {
+  border-color: var(--primary);
+  background: #eff3ff;
+  color: var(--primary);
+}
+</style>
+
+<script>
+function pickBank(el) {
+  document.querySelectorAll('.bank-chip').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('bankCode').value = el.dataset.code;
+  document.getElementById('linkBtn').disabled = false;
+}
+
+function refreshBalance(aid) {
+  const btn = event.currentTarget;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-rotate fa-spin me-1"></i>조회 중…';
+  fetch(`/openbanking/balance/${aid}`)
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById(`bal-${aid}`).textContent =
+        Number(d.balance).toLocaleString('ko-KR') + '원';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-rotate me-1"></i>잔액조회';
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-rotate me-1"></i>잔액조회';
+    });
+}
+</script>
+{% endblock %}

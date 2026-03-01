@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% block title %}{{ ch.title }} · MyFinance{% endblock %}
+{% block page_title %}챌린지 상세{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-7">
+
+  <!-- 챌린지 정보 -->
+  <div class="card mb-4">
+    <div class="card-bd text-center">
+      <div style="font-size:2.5rem;margin-bottom:8px">🏆</div>
+      <h4 class="fw-800 mb-1">{{ ch.title }}</h4>
+      {% if ch.description %}
+      <p class="text-muted" style="font-size:.88rem">{{ ch.description }}</p>
+      {% endif %}
+      <div class="d-flex justify-content-center gap-4 mt-3" style="font-size:.84rem">
+        <div>
+          <div class="text-muted">기간</div>
+          <div class="fw-600">{{ ch.period_start.strftime('%m/%d') }} ~ {{ ch.period_end.strftime('%m/%d') }}</div>
+        </div>
+        <div>
+          <div class="text-muted">목표</div>
+          <div class="fw-600">{{ '{:,.0f}'.format(ch.target_amount) }}원</div>
+        </div>
+        <div>
+          <div class="text-muted">남은 날</div>
+          <div class="fw-600">D-{{ [0, (ch.period_end - today).days]|max }}일</div>
+        </div>
+        <div>
+          <div class="text-muted">참여자</div>
+          <div class="fw-600">{{ members|length }}명</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 내 현황 -->
+  {% if me %}
+  <div class="card mb-4">
+    <div class="card-hd">📊 내 진행 현황</div>
+    <div class="card-bd">
+      {% set my_pct = [100, (me.current_amount / ch.target_amount * 100)|int]|min if ch.target_amount > 0 else 0 %}
+      <div class="d-flex justify-content-between mb-2" style="font-size:.88rem">
+        <span>진행률</span>
+        <span class="fw-700">{{ '{:,.0f}'.format(me.current_amount) }} / {{ '{:,.0f}'.format(ch.target_amount) }}원</span>
+      </div>
+      <div class="progress mb-3" style="height:14px;border-radius:7px">
+        <div class="progress-bar bg-warning" style="width:{{ my_pct }}%"></div>
+      </div>
+      <form method="post" action="{{ url_for('social.update_challenge', cid=ch.id) }}" class="d-flex gap-2">
+        <div class="amt-wrap flex-fill">
+          <input type="text" name="amount" class="form-control pe-5"
+                 oninput="fmtNum(this)" placeholder="금액 입력" required>
+          <span class="amt-unit">원</span>
+        </div>
+        <button type="submit" class="btn btn-warning fw-700">업데이트</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <div class="card mb-4">
+    <div class="card-bd text-center">
+      <form method="post" action="{{ url_for('social.join_challenge', cid=ch.id) }}">
+        <p class="text-muted mb-3">아직 참가하지 않았습니다</p>
+        <button type="submit" class="btn btn-warning fw-700 px-4">챌린지 참가하기</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 랭킹 -->
+  <div class="card">
+    <div class="card-hd">🥇 참가자 랭킹</div>
+    <div class="card-bd p-0">
+      {% for cm in members %}
+      <div class="d-flex align-items-center gap-3 px-4 py-3 border-bottom">
+        <div class="fw-800 text-center" style="width:24px;color:{{ '#FFD700' if loop.index0==0 else ('#C0C0C0' if loop.index0==1 else ('#CD7F32' if loop.index0==2 else 'var(--muted)')) }}">
+          {{ loop.index }}
+        </div>
+        <div class="av-sm">{{ cm.user.nickname[0] if cm.user.nickname else 'U' }}</div>
+        <div class="flex-fill fw-600" style="font-size:.88rem">{{ cm.user.nickname or '사용자' }}</div>
+        {% set pct = [100, (cm.current_amount / ch.target_amount * 100)|int]|min if ch.target_amount > 0 else 0 %}
+        <div class="d-flex align-items-center gap-2">
+          <div style="width:80px">
+            <div class="progress" style="height:6px">
+              <div class="progress-bar bg-warning" style="width:{{ pct }}%"></div>
+            </div>
+          </div>
+          <span style="font-size:.8rem;color:var(--muted)">{{ pct }}%</span>
+        </div>
+        <div class="fw-700" style="font-size:.88rem">{{ '{:,.0f}'.format(cm.current_amount) }}원</div>
+      </div>
+      {% else %}
+      <div class="empty-st">참가자 없음</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="mt-3">
+    <a href="{{ url_for('social.challenges') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left me-1"></i>챌린지 목록
+    </a>
+  </div>
+</div>
+</div>
+{% endblock %}

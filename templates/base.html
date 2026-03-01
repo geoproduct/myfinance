@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}MyFinance{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#4f46e5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MyFinance">
+{% block head %}{% endblock %}
+</head>
+<body>
+
+<!-- 사이드바 -->
+<nav class="sb" id="sidebar">
+  <div class="sb-brand">
+    <a href="{{ url_for('dashboard.index') }}">
+      <span class="ico">💰</span>
+      <span class="name">MyFinance</span>
+    </a>
+  </div>
+
+  <ul class="sb-nav">
+    <li class="{% if request.blueprint=='dashboard' %}on{% endif %}">
+      <a href="{{ url_for('dashboard.index') }}">
+        <i class="fa-solid fa-chart-pie"></i> 대시보드
+      </a>
+    </li>
+    <li class="{% if request.blueprint=='transactions' %}on{% endif %}">
+      <a href="{{ url_for('transactions.index') }}">
+        <i class="fa-solid fa-receipt"></i> 거래내역
+      </a>
+    </li>
+    <li class="{% if request.blueprint=='budget' %}on{% endif %}">
+      <a href="{{ url_for('budget.index') }}">
+        <i class="fa-solid fa-wallet"></i> 예산관리
+      </a>
+    </li>
+    <li class="{% if request.blueprint=='assets' %}on{% endif %}">
+      <a href="{{ url_for('assets.index') }}">
+        <i class="fa-solid fa-building-columns"></i> 자산관리
+      </a>
+    </li>
+    <li class="{% if request.blueprint=='social' %}on{% endif %}">
+      <a href="{{ url_for('social.index') }}">
+        <i class="fa-solid fa-users"></i> 커뮤니티
+      </a>
+    </li>
+    <li class="{% if request.blueprint=='openbanking' %}on{% endif %}">
+      <a href="{{ url_for('openbanking.index') }}">
+        <i class="fa-solid fa-plug-circle-bolt"></i> 오픈뱅킹
+      </a>
+    </li>
+  </ul>
+
+  <div class="sb-foot">
+    <a href="{{ url_for('auth.settings') }}" class="sb-user">
+      <div class="av">{{ current_user.nickname[0] if current_user.nickname else 'U' }}</div>
+      <div>
+        <span class="nm">{{ current_user.nickname or '사용자' }}</span>
+        <span class="em">{{ current_user.email }}</span>
+      </div>
+    </a>
+    <a href="{{ url_for('auth.logout') }}" class="sb-logout" title="로그아웃">
+      <i class="fa-solid fa-right-from-bracket"></i>
+    </a>
+  </div>
+</nav>
+
+<!-- 메인 영역 -->
+<div class="wrap">
+  <!-- 상단바 -->
+  <header class="topbar">
+    <button class="top-toggle" id="sbToggle"><i class="fa-solid fa-bars"></i></button>
+    <span class="top-title">{% block page_title %}{% endblock %}</span>
+    <div class="top-right">
+      <!-- 알림 -->
+      <div class="dropdown">
+        <button class="ico-btn" data-bs-toggle="dropdown">
+          <i class="fa-solid fa-bell"></i>
+          {% set unread = current_user.unread_count() %}
+          {% if unread > 0 %}
+          <span class="bdot">{{ unread }}</span>
+          {% endif %}
+        </button>
+        <div class="dropdown-menu dropdown-menu-end notif-dd">
+          <div class="notif-hd">
+            <span>알림</span>
+            {% if g_notifs %}
+            <button class="btn btn-link btn-sm p-0 text-muted" onclick="readAllNotif()">모두 읽음</button>
+            {% endif %}
+          </div>
+          {% if g_notifs %}
+            {% for n in g_notifs %}
+            <div class="notif-row {% if not n.is_read %}unread{% endif %}" onclick="location.href='{{ n.link or '#' }}'">
+              <div class="notif-msg">{{ n.message }}</div>
+              <div class="notif-time">{{ n.created_at.strftime('%m/%d %H:%M') }}</div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="notif-empty"><i class="fa-regular fa-bell-slash"></i><br>알림이 없습니다</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- 푸시 알림 토글 -->
+      <button id="pushToggleBtn" class="btn btn-sm btn-outline-primary"
+              style="font-size:.78rem;padding:.25rem .6rem">
+        <i class="fa-regular fa-bell me-1"></i>알림 받기
+      </button>
+
+      <!-- 빠른 추가 -->
+      <a href="{{ url_for('transactions.add') }}" class="btn btn-primary add-btn">
+        <i class="fa-solid fa-plus"></i> 거래추가
+      </a>
+    </div>
+  </header>
+
+  <!-- 플래시 메시지 -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-wrap mt-2">
+      {% for cat, msg in messages %}
+      <div class="alert alert-{{ 'danger' if cat=='danger' else ('success' if cat=='success' else 'info') }} alert-dismissible fade show" role="alert">
+        {{ msg }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- 페이지 콘텐츠 -->
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block scripts %}{% endblock %}
+
+<!-- 웹 푸시 -->
+{% if vapid_public_key %}
+<script>window.vapidPublicKey = "{{ vapid_public_key }}";</script>
+<script src="{{ url_for('static', filename='js/push.js') }}"></script>
+{% endif %}
+
+<script>
+// 알림 읽음 처리
+function readAllNotif() {
+  fetch('/auth/notifications/read-all', { method: 'POST' })
+    .then(() => location.reload());
+}
+</script>
+</body>
+</html>

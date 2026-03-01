@@ -1,0 +1,35 @@
+{
+  "name": "MyFinance",
+  "short_name": "MyFinance",
+  "description": "스마트한 개인 재무관리 앱",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait-primary",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%234f46e5'/><text y='.9em' font-size='80' x='10'>💰</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "categories": ["finance", "productivity"],
+  "shortcuts": [
+    {
+      "name": "거래 추가",
+      "short_name": "거래추가",
+      "url": "/transactions/add",
+      "icons": [{"src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='80'>➕</text></svg>", "sizes": "any"}]
+    },
+    {
+      "name": "대시보드",
+      "short_name": "대시보드",
+      "url": "/",
+      "icons": [{"src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='80'>📊</text></svg>", "sizes": "any"}]
+    }
+  ]
+}

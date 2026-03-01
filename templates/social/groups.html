@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}그룹 · MyFinance{% endblock %}
+{% block page_title %}그룹 관리{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- 내 그룹 목록 -->
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-hd">👥 내 그룹</div>
+      {% if memberships %}
+      <div class="card-bd p-0">
+        {% for gm in memberships %}
+        <a href="{{ url_for('social.group_detail', gid=gm.group.id) }}" class="pop-item">
+          <div class="av">G</div>
+          <div class="flex-fill">
+            <div class="fw-600" style="font-size:.9rem">{{ gm.group.name }}</div>
+            <div class="text-muted" style="font-size:.76rem">
+              {{ gm.group.members.count() }}명 참여 ·
+              {% if gm.role == 'owner' %}<span class="badge bg-primary">방장</span>{% else %}멤버{% endif %}
+            </div>
+          </div>
+          <i class="fa-solid fa-chevron-right text-muted"></i>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="card-bd">
+        <div class="empty-st">
+          <i class="fa-solid fa-users fa-3x mb-3"></i>
+          <div>참여 중인 그룹이 없습니다</div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 오른쪽: 만들기 & 참여 -->
+  <div class="col-lg-4">
+    <!-- 그룹 만들기 -->
+    <div class="card mb-4">
+      <div class="card-hd">➕ 그룹 만들기</div>
+      <div class="card-bd">
+        <form method="post" action="{{ url_for('social.create_group') }}">
+          <div class="mb-3">
+            <label class="form-label fw-600">그룹명 <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" placeholder="2자 이상" minlength="2" required>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">만들기</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 초대코드로 참여 -->
+    <div class="card">
+      <div class="card-hd">🔗 초대코드로 참여</div>
+      <div class="card-bd">
+        <form method="post" action="{{ url_for('social.join_group') }}">
+          <div class="mb-3">
+            <label class="form-label fw-600">초대코드</label>
+            <input type="text" name="invite_code" class="form-control"
+                   placeholder="6자리 코드 입력" maxlength="6" style="text-transform:uppercase" required>
+          </div>
+          <button type="submit" class="btn btn-outline-primary w-100">참여하기</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

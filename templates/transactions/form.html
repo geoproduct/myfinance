@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+{% block title %}{{ '거래 수정' if txn else '거래 추가' }} · MyFinance{% endblock %}
+{% block page_title %}{{ '거래 수정' if txn else '새 거래 추가' }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-6">
+<div class="card">
+  <div class="card-bd">
+    <form method="post">
+      <!-- 지출/수입 토글 -->
+      <div class="type-sw mb-4" id="typeSw">
+        <button type="button" class="type-btn exp {% if not txn or txn.type=='expense' %}on{% endif %}" onclick="setType('expense')">지출</button>
+        <button type="button" class="type-btn inc {% if txn and txn.type=='income' %}on{% endif %}" onclick="setType('income')">수입</button>
+      </div>
+      <input type="hidden" name="type" id="typeInput" value="{{ txn.type if txn else 'expense' }}">
+
+      <!-- 금액 -->
+      <div class="mb-3">
+        <label class="form-label fw-600">금액 <span class="text-danger">*</span></label>
+        <div class="amt-wrap">
+          <input type="text" name="amount" id="amtInput" class="form-control pe-5"
+                 value="{{ '{:,.0f}'.format(txn.amount) if txn else '' }}"
+                 oninput="fmtNum(this)" placeholder="0" required>
+          <span class="amt-unit">원</span>
+        </div>
+      </div>
+
+      <!-- 날짜 -->
+      <div class="mb-3">
+        <label class="form-label fw-600">날짜 <span class="text-danger">*</span></label>
+        <input type="date" name="date" class="form-control"
+               value="{{ txn.date.strftime('%Y-%m-%d') if txn else today }}" required>
+      </div>
+
+      <!-- 카테고리 -->
+      <div class="mb-3">
+        <label class="form-label fw-600">카테고리</label>
+        <input type="hidden" name="category_id" id="catInput"
+               value="{{ txn.category_id if txn else '' }}">
+        <div class="cat-grid" id="catGrid">
+          {% for c in cats %}
+          <div class="cat-chip {% if txn and txn.category_id==c.id %}on{% endif %}"
+               data-id="{{ c.id }}" data-type="{{ c.type }}"
+               onclick="pickCat(this)">
+            <span class="ci">{{ c.icon }}</span>
+            <span>{{ c.name }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- 내용 -->
+      <div class="mb-3">
+        <label class="form-label fw-600">내용 <span class="text-danger">*</span></label>
+        <input type="text" name="description" class="form-control"
+               value="{{ txn.description if txn else '' }}" placeholder="예: 스타벅스 아메리카노" required>
+      </div>
+
+      <!-- 메모 -->
+      <div class="mb-4">
+        <label class="form-label fw-600">메모 <span class="text-muted">(선택)</span></label>
+        <input type="text" name="memo" class="form-control"
+               value="{{ txn.memo if txn else '' }}" placeholder="추가 메모">
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary flex-fill">
+          {{ '수정 완료' if txn else '추가하기' }}
+        </button>
+        <a href="{{ url_for('transactions.index') }}" class="btn btn-outline-secondary">취소</a>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const currentType = document.getElementById('typeInput').value;
+
+function setType(t) {
+  document.getElementById('typeInput').value = t;
+  const sw = document.getElementById('typeSw');
+  sw.querySelector('.exp').classList.toggle('on', t==='expense');
+  sw.querySelector('.inc').classList.toggle('on', t==='income');
+  // 카테고리 필터
+  document.querySelectorAll('.cat-chip').forEach(el => {
+    el.style.display = (el.dataset.type === t || el.dataset.type === 'all') ? '' : 'none';
+  });
+  document.getElementById('catInput').value = '';
+  document.querySelectorAll('.cat-chip').forEach(el => el.classList.remove('on'));
+}
+
+function pickCat(el) {
+  document.querySelectorAll('.cat-chip').forEach(e => e.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('catInput').value = el.dataset.id;
+}
+
+// 초기 타입 적용
+setType(currentType);
+{% if txn %}
+// 수정 시 기존 카테고리 선택 유지
+const chip = document.querySelector(`.cat-chip[data-id="{{ txn.category_id }}"]`);
+if (chip) { chip.classList.add('on'); chip.style.display = ''; }
+{% endif %}
+</script>
+{% endblock %}

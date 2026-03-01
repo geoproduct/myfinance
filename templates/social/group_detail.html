@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+{% block title %}{{ group.name }} · MyFinance{% endblock %}
+{% block page_title %}{{ group.name }}{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- 멤버 + 정산 -->
+  <div class="col-lg-4">
+    <!-- 그룹 정보 -->
+    <div class="card mb-4">
+      <div class="card-hd">그룹 정보</div>
+      <div class="card-bd" style="font-size:.88rem">
+        {% if me.role == 'owner' %}
+        <div class="alert alert-info py-2 mb-3" style="font-size:.82rem">
+          초대코드: <strong>{{ group.invite_code }}</strong>
+        </div>
+        {% endif %}
+        <div class="text-muted mb-1">멤버 {{ members|length }}명 (최대 10)</div>
+        {% for gm in members %}
+        <div class="member-chip mb-2">
+          <div class="av-sm">{{ gm.user.nickname[0] if gm.user.nickname else 'U' }}</div>
+          <span class="fw-600" style="font-size:.84rem">{{ gm.user.nickname or '사용자' }}</span>
+          {% if gm.role == 'owner' %}
+          <span class="badge bg-primary ms-auto" style="font-size:.7rem">방장</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- 이번 달 정산 -->
+    <div class="card">
+      <div class="card-hd">💰 지출 정산</div>
+      <div class="card-bd">
+        {% if settle %}
+          {% for uid, amt in settle.items() %}
+          {% set member = members | selectattr('user_id', 'eq', uid) | first %}
+          {% if member %}
+          <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="font-size:.85rem">
+            <span>{{ member.user.nickname or '사용자' }}</span>
+            <span class="fw-700" style="color:var(--red)">{{ '{:,.0f}'.format(amt) }}원</span>
+          </div>
+          {% endif %}
+          {% endfor %}
+          {% set total_settle = settle.values()|sum %}
+          {% set per = total_settle / members|length if members|length > 0 else 0 %}
+          <div class="mt-2 p-2 bg-light rounded" style="font-size:.82rem">
+            <div>합계: {{ '{:,.0f}'.format(total_settle) }}원</div>
+            <div class="text-muted">1인당: {{ '{:,.0f}'.format(per) }}원</div>
+          </div>
+        {% else %}
+          <div class="empty-st" style="padding:16px">이번 달 공동 지출 없음</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 공동 거래내역 -->
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-hd d-flex justify-content-between align-items-center">
+        <span>📋 공동 거래내역</span>
+        <a href="{{ url_for('transactions.add') }}?group_id={{ group.id }}"
+           class="btn btn-primary btn-sm">+ 거래추가</a>
+      </div>
+      {% if txns %}
+      <div class="txn-full">
+        {% for t in txns %}
+        <div class="txn-row">
+          <div class="cat-badge" style="background:{{ t.category.color if t.category else '#eee' }}22">
+            {{ t.category.icon if t.category else '📌' }}
+          </div>
+          <div class="txn-info">
+            <div class="txn-desc">{{ t.description }}</div>
+            <div class="txn-sub">
+              {{ t.category.name if t.category else '미분류' }} ·
+              {{ t.user.nickname or '사용자' }} ·
+              {{ t.date.strftime('%m/%d') }}
+            </div>
+          </div>
+          <div class="txn-amt {{ t.type }}">
+            {{ '+' if t.type=='income' else '-' }}{{ '{:,.0f}'.format(t.amount) }}원
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="card-bd">
+        <div class="empty-st">공동 거래내역이 없습니다</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="mt-3">
+  <a href="{{ url_for('social.groups') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="fa-solid fa-arrow-left me-1"></i>그룹 목록
+  </a>
+</div>
+{% endblock %}

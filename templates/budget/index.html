@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% block title %}예산관리 · MyFinance{% endblock %}
+{% block page_title %}예산관리{% endblock %}
+
+{% block content %}
+<!-- 월 이동 -->
+<div class="d-flex align-items-center gap-3 mb-4">
+  <a href="?year={{ py }}&month={{ pm }}" class="btn btn-outline-secondary btn-sm">
+    <i class="fa-solid fa-chevron-left"></i>
+  </a>
+  <h5 class="mb-0">{{ y }}년 {{ m }}월</h5>
+  <a href="?year={{ ny }}&month={{ nm }}" class="btn btn-outline-secondary btn-sm">
+    <i class="fa-solid fa-chevron-right"></i>
+  </a>
+</div>
+
+<div class="row g-4">
+  <!-- 왼쪽: 예산 목록 -->
+  <div class="col-lg-8">
+    <!-- 전체 요약 -->
+    {% if items %}
+    <div class="card mb-4">
+      <div class="card-bd">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-700">전체 예산</span>
+          <span class="text-muted" style="font-size:.84rem">
+            {{ '{:,.0f}'.format(ts) }} / {{ '{:,.0f}'.format(tb) }}원
+          </span>
+        </div>
+        <div class="progress mb-1" style="height:12px;border-radius:6px">
+          {% set total_pct = (ts/tb*100)|int if tb > 0 else 0 %}
+          <div class="progress-bar {% if total_pct>=100 %}bg-danger{% elif total_pct>=80 %}bg-warning{% else %}bg-primary{% endif %}"
+               style="width:{{ [total_pct,100]|min }}%"></div>
+        </div>
+        <div class="text-end" style="font-size:.78rem;color:var(--muted)">
+          잔여 {{ '{:,.0f}'.format(tb-ts) }}원
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- 카테고리별 예산 -->
+    {% if items %}
+    <div class="card mb-4">
+      <div class="card-hd">카테고리별 예산</div>
+      <div class="card-bd">
+        {% for it in items %}
+        <div class="mb-4">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="fw-600" style="font-size:.9rem">
+              {{ it.b.category.icon if it.b.category else '📌' }}
+              {{ it.b.category.name if it.b.category else '미분류' }}
+            </span>
+            <div class="d-flex align-items-center gap-2">
+              <span class="text-muted" style="font-size:.8rem">
+                {{ '{:,.0f}'.format(it.spent) }} / {{ '{:,.0f}'.format(it.b.amount) }}원
+              </span>
+              <form method="post" action="{{ url_for('budget.delete', bid=it.b.id) }}"
+                    onsubmit="return confirm('삭제할까요?')">
+                <button class="btn btn-outline-danger btn-xs" type="submit">
+                  <i class="fa-solid fa-times"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+          <div class="progress mb-1" style="height:10px;border-radius:5px">
+            <div class="progress-bar
+                {% if it.pct >= 100 %}bg-danger
+                {% elif it.pct >= 80 %}bg-warning
+                {% else %}bg-primary{% endif %}"
+                 style="width:{{ [it.pct,100]|min }}%"></div>
+          </div>
+          <div class="d-flex justify-content-between" style="font-size:.75rem;color:var(--muted)">
+            <span>{{ it.pct }}% 사용</span>
+            <span class="{% if it.remain < 0 %}text-danger{% endif %}">
+              {{ '초과 ' if it.remain < 0 else '잔여 ' }}{{ '{:,.0f}'.format(it.remain|abs) }}원
+            </span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="card mb-4">
+      <div class="card-bd">
+        <div class="empty-st">
+          <i class="fa-solid fa-wallet fa-3x mb-3"></i>
+          <div>아직 예산이 없습니다</div>
+          <div class="text-muted" style="font-size:.83rem;margin-top:6px">오른쪽에서 예산을 설정해 보세요</div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- 예산 외 지출 -->
+    {% if unbudgeted %}
+    <div class="card">
+      <div class="card-hd text-warning"><i class="fa-solid fa-triangle-exclamation me-1"></i>예산 미설정 지출</div>
+      <div class="card-bd">
+        {% for row in unbudgeted %}
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+          <span style="font-size:.88rem">{{ row.icon }} {{ row.name }}</span>
+          <span class="fw-700" style="color:var(--red)">{{ '{:,.0f}'.format(row.t | float) }}원</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 오른쪽: 예산 설정 -->
+  <div class="col-lg-4">
+    <!-- 예산 추가 -->
+    <div class="card mb-4">
+      <div class="card-hd">➕ 예산 설정</div>
+      <div class="card-bd">
+        <form method="post" action="{{ url_for('budget.set_budget') }}">
+          <input type="hidden" name="month" value="{{ ym }}">
+          <div class="mb-3">
+            <label class="form-label fw-600">카테고리</label>
+            <select name="category_id" class="form-select form-select-sm" required>
+              <option value="">선택</option>
+              {% for c in exp_cats %}
+              <option value="{{ c.id }}">{{ c.icon }} {{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-600">예산 금액</label>
+            <div class="amt-wrap">
+              <input type="text" name="amount" class="form-control form-control-sm pe-5"
+                     oninput="fmtNum(this)" placeholder="0" required>
+              <span class="amt-unit" style="font-size:.8rem">원</span>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm w-100">저장</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 지난달 복사 -->
+    <div class="card">
+      <div class="card-hd">📋 이전 달 복사</div>
+      <div class="card-bd">
+        <p class="text-muted mb-3" style="font-size:.83rem">이전 달 예산 설정을 그대로 가져옵니다.</p>
+        <form method="post" action="{{ url_for('budget.copy') }}">
+          <input type="hidden" name="from_ym" value="{{ '%04d-%02d'%(py,pm) }}">
+          <input type="hidden" name="to_ym"   value="{{ ym }}">
+          <button type="submit" class="btn btn-outline-primary btn-sm w-100"
+                  onclick="return confirm('{{ '%04d-%02d'%(py,pm) }} 예산을 복사할까요?')">
+            {{ '%d년 %d월'%(py,pm) }} 예산 복사
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

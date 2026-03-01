@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block title %}거래 가져오기 · MyFinance{% endblock %}
+{% block page_title %}엑셀 가져오기{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-6">
+
+  <!-- 안내 -->
+  <div class="card mb-4">
+    <div class="card-hd">📋 파일 형식 안내</div>
+    <div class="card-bd" style="font-size:.88rem">
+      <p class="mb-2">엑셀(.xlsx) 파일에 아래 열이 포함되어야 합니다:</p>
+      <table class="table table-sm table-bordered mb-2">
+        <thead class="table-light"><tr>
+          <th>열 이름</th><th>형식</th><th>필수</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>date / 날짜</td><td>YYYY-MM-DD</td><td>✅</td></tr>
+          <tr><td>description / 내용</td><td>텍스트</td><td>✅</td></tr>
+          <tr><td>amount / 금액</td><td>숫자</td><td>✅</td></tr>
+          <tr><td>type / 유형</td><td>expense / income</td><td>✅</td></tr>
+          <tr><td>category / 카테고리</td><td>카테고리명</td><td>선택</td></tr>
+          <tr><td>memo / 메모</td><td>텍스트</td><td>선택</td></tr>
+        </tbody>
+      </table>
+      <small class="text-muted">* 열 이름은 한글 또는 영문 모두 인식합니다.</small>
+    </div>
+  </div>
+
+  <!-- 업로드 폼 -->
+  <div class="card">
+    <div class="card-hd">📂 파일 선택</div>
+    <div class="card-bd">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+        <div class="alert alert-{{ 'danger' if cat=='danger' else 'success' }} py-2">{{ msg }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-4">
+          <label class="form-label fw-600">엑셀 파일 (.xlsx)</label>
+          <input type="file" name="file" class="form-control" accept=".xlsx" required>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-success flex-fill">
+            <i class="fa-solid fa-file-import"></i> 가져오기
+          </button>
+          <a href="{{ url_for('transactions.index') }}" class="btn btn-outline-secondary">취소</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}

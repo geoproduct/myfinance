@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>회원가입 · MyFinance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="ico">💰</div>
+      <h1>회원가입</h1>
+      <p>MyFinance와 함께 시작하세요</p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+      <div class="alert alert-{{ 'danger' if cat=='danger' else 'info' }} py-2 mb-3">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="post">
+      <div class="mb-3">
+        <label class="form-label fw-600">이메일 <span class="text-danger">*</span></label>
+        <input type="email" name="email" class="form-control" placeholder="example@email.com" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-600">닉네임 <span class="text-danger">*</span></label>
+        <input type="text" name="nickname" class="form-control" placeholder="2~10자" minlength="2" maxlength="10" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-600">비밀번호 <span class="text-danger">*</span></label>
+        <input type="password" name="password" class="form-control" placeholder="8자 이상" minlength="8" required>
+      </div>
+      <div class="mb-4">
+        <label class="form-label fw-600">비밀번호 확인 <span class="text-danger">*</span></label>
+        <input type="password" name="password2" class="form-control" placeholder="동일하게 입력" required>
+      </div>
+      <button type="submit" class="btn btn-primary w-100 py-2 fw-700">가입하기</button>
+    </form>
+
+    <div class="text-center mt-3">
+      <span class="text-muted" style="font-size:.88rem">이미 계정이 있으신가요?</span>
+      <a href="{{ url_for('auth.login') }}" class="ms-2 fw-600" style="font-size:.88rem">로그인</a>
+    </div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

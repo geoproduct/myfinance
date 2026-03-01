@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% block title %}커뮤니티 · MyFinance{% endblock %}
+{% block page_title %}커뮤니티{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- 피드 -->
+  <div class="col-lg-8">
+    <!-- 글쓰기 버튼 -->
+    <a href="{{ url_for('social.new_post') }}" class="qwrite mb-3 d-block text-decoration-none">
+      <div class="qwrite-inner">
+        <div class="av">{{ current_user.nickname[0] if current_user.nickname else 'U' }}</div>
+        <div class="qwrite-box">💬 재테크 팁이나 질문을 공유해 보세요!</div>
+      </div>
+    </a>
+
+    <!-- 필터 -->
+    <div class="d-flex gap-2 mb-3 flex-wrap">
+      <a href="?cat=all&sort={{ sort }}"
+         class="btn btn-sm {% if cat=='all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">전체</a>
+      {% for key, icon, label in pcats %}
+      <a href="?cat={{ key }}&sort={{ sort }}"
+         class="btn btn-sm {% if cat==key %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+        {{ icon }} {{ label }}
+      </a>
+      {% endfor %}
+      <div class="ms-auto d-flex gap-2">
+        <a href="?cat={{ cat }}&sort=latest"
+           class="btn btn-sm {% if sort=='latest' %}btn-dark{% else %}btn-outline-secondary{% endif %}">최신</a>
+        <a href="?cat={{ cat }}&sort=popular"
+           class="btn btn-sm {% if sort=='popular' %}btn-dark{% else %}btn-outline-secondary{% endif %}">인기</a>
+      </div>
+    </div>
+
+    <!-- 게시글 목록 -->
+    {% if posts %}
+      {% for p in posts %}
+      <div class="post-card">
+        <div class="post-hd">
+          <div class="av">{{ p.user.nickname[0] if (not p.is_anonymous and p.user.nickname) else '익' }}</div>
+          <div>
+            <div class="fw-600" style="font-size:.88rem">
+              {{ '익명' if p.is_anonymous else p.user.nickname }}
+            </div>
+            <div class="text-muted" style="font-size:.75rem">{{ p.created_at.strftime('%Y.%m.%d %H:%M') }}</div>
+          </div>
+          {% for key, icon, label in pcats %}
+            {% if key == p.category %}
+            <span class="post-cat">{{ icon }} {{ label }}</span>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <div class="post-body">
+          <a href="{{ url_for('social.post_detail', pid=p.id) }}"
+             class="text-decoration-none text-dark">
+            {{ p.content[:120] }}{{ '...' if p.content|length > 120 else '' }}
+          </a>
+        </div>
+        <div class="post-ft">
+          <button class="like-btn {% if p.id in liked %}on{% endif %}"
+                  onclick="toggleLike({{ p.id }}, this)">
+            <i class="{% if p.id in liked %}fa-solid{% else %}fa-regular{% endif %} fa-heart"></i>
+            <span id="lk{{ p.id }}">{{ p.likes }}</span>
+          </button>
+          <a href="{{ url_for('social.post_detail', pid=p.id) }}" class="cmt-link">
+            <i class="fa-regular fa-comment"></i> {{ p.comments.count() }}
+          </a>
+          {% if p.user_id == current_user.id %}
+          <form method="post" action="{{ url_for('social.delete_post', pid=p.id) }}"
+                onsubmit="return confirm('삭제할까요?')" class="ms-auto">
+            <button class="btn btn-xs btn-outline-danger">삭제</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+
+      <!-- 페이지네이션 -->
+      {% if pg.pages > 1 %}
+      <nav class="mt-3">
+        <ul class="pagination pagination-sm justify-content-center">
+          {% if pg.has_prev %}
+          <li class="page-item">
+            <a class="page-link" href="?cat={{ cat }}&sort={{ sort }}&page={{ pg.prev_num }}">이전</a>
+          </li>
+          {% endif %}
+          {% for num in pg.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if num %}
+            <li class="page-item {% if num==pg.page %}active{% endif %}">
+              <a class="page-link" href="?cat={{ cat }}&sort={{ sort }}&page={{ num }}">{{ num }}</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+          {% endfor %}
+          {% if pg.has_next %}
+          <li class="page-item">
+            <a class="page-link" href="?cat={{ cat }}&sort={{ sort }}&page={{ pg.next_num }}">다음</a>
+          </li>
+          {% endif %}
+        </ul>
+      </nav>
+      {% endif %}
+    {% else %}
+      <div class="card">
+        <div class="card-bd">
+          <div class="empty-st">
+            <i class="fa-regular fa-comment-dots fa-3x mb-3"></i>
+            <div>첫 번째 게시글을 작성해 보세요!</div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- 사이드 패널 -->
+  <div class="col-lg-4">
+    <!-- 내 그룹 -->
+    <div class="card mb-4">
+      <div class="card-hd d-flex justify-content-between align-items-center">
+        <span>👥 내 그룹</span>
+        <a href="{{ url_for('social.groups') }}" class="btn btn-link btn-sm p-0">관리</a>
+      </div>
+      <div class="card-bd p-0">
+        {% if my_groups %}
+          {% for gm in my_groups %}
+          <a href="{{ url_for('social.group_detail', gid=gm.group.id) }}" class="pop-item">
+            <div class="av-sm">G</div>
+            <div class="pop-txt">{{ gm.group.name }}</div>
+            <div class="pop-lk">{{ gm.group.members.count() }}명</div>
+          </a>
+          {% endfor %}
+        {% else %}
+          <div class="notif-empty">참여 중인 그룹 없음</div>
+        {% endif %}
+        <div class="p-3">
+          <a href="{{ url_for('social.groups') }}" class="btn btn-outline-primary btn-sm w-100">그룹 참여/만들기</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 내 챌린지 -->
+    {% if my_ch %}
+    <div class="card">
+      <div class="card-hd d-flex justify-content-between align-items-center">
+        <span>🏆 진행 중 챌린지</span>
+        <a href="{{ url_for('social.challenges') }}" class="btn btn-link btn-sm p-0">전체보기</a>
+      </div>
+      <div class="card-bd">
+        {% for item in my_ch %}
+        <div class="mb-3">
+          <div class="d-flex justify-content-between mb-1" style="font-size:.84rem">
+            <span class="fw-600">{{ item.ch.title }}</span>
+            <span class="text-muted">{{ item.pct }}%</span>
+          </div>
+          <div class="progress" style="height:8px;border-radius:4px">
+            <div class="progress-bar bg-warning" style="width:{{ item.pct }}%"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleLike(pid, btn) {
+  fetch(`/social/post/${pid}/like`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      btn.classList.toggle('on', d.liked);
+      btn.querySelector('i').className = d.liked ? 'fa-solid fa-heart' : 'fa-regular fa-heart';
+      document.getElementById('lk' + pid).textContent = d.likes;
+    });
+}
+</script>
+{% endblock %}

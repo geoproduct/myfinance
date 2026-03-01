@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}거래내역 · MyFinance{% endblock %}
+{% block page_title %}거래내역{% endblock %}
+
+{% block content %}
+<!-- 필터 바 -->
+<div class="card mb-4">
+  <div class="card-bd py-3">
+    <form method="get" class="row g-2 align-items-end">
+      <!-- 월 이동 -->
+      <div class="col-auto d-flex align-items-center gap-2">
+        <a href="?year={{ prev_y }}&month={{ prev_m }}" class="btn btn-outline-secondary btn-sm">
+          <i class="fa-solid fa-chevron-left"></i>
+        </a>
+        <strong style="font-size:.95rem;min-width:80px;text-align:center">{{ y }}년 {{ m }}월</strong>
+        <a href="?year={{ next_y }}&month={{ next_m }}" class="btn btn-outline-secondary btn-sm">
+          <i class="fa-solid fa-chevron-right"></i>
+        </a>
+      </div>
+      <input type="hidden" name="year"  value="{{ y }}">
+      <input type="hidden" name="month" value="{{ m }}">
+      <!-- 유형 -->
+      <div class="col-auto">
+        <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="all"     {% if typ=='all'     %}selected{% endif %}>전체</option>
+          <option value="expense" {% if typ=='expense' %}selected{% endif %}>지출</option>
+          <option value="income"  {% if typ=='income'  %}selected{% endif %}>수입</option>
+        </select>
+      </div>
+      <!-- 카테고리 -->
+      <div class="col-auto">
+        <select name="cat" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="0">전체 카테고리</option>
+          {% for c in cats %}
+          <option value="{{ c.id }}" {% if cat_id==c.id %}selected{% endif %}>
+            {{ c.icon }} {{ c.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 엑셀 내보내기 / 가져오기 -->
+      <div class="col-auto ms-auto d-flex gap-2">
+        <a href="{{ url_for('transactions.export_excel', year=y, month=m) }}"
+           class="btn btn-outline-primary btn-sm">
+          <i class="fa-solid fa-file-arrow-down"></i> 내보내기
+        </a>
+        <a href="{{ url_for('transactions.import_excel') }}" class="btn btn-outline-success btn-sm">
+          <i class="fa-solid fa-file-excel"></i> 가져오기
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 월 요약 -->
+<div class="row g-3 mb-4">
+  <div class="col-4">
+    <div class="mini-st text-center">
+      <div style="font-size:.75rem;color:var(--muted)">수입</div>
+      <div style="font-weight:800;color:var(--green)">{{ '{:,.0f}'.format(inc) }}원</div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="mini-st text-center">
+      <div style="font-size:.75rem;color:var(--muted)">지출</div>
+      <div style="font-weight:800;color:var(--red)">{{ '{:,.0f}'.format(exp) }}원</div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="mini-st text-center">
+      <div style="font-size:.75rem;color:var(--muted)">잔액</div>
+      <div style="font-weight:800;color:var(--blue)">{{ '{:,.0f}'.format(inc - exp) }}원</div>
+    </div>
+  </div>
+</div>
+
+<!-- 거래 목록 (날짜별 그룹) -->
+{% if txns %}
+<div class="txn-full">
+  {% set ns = namespace(cur_date=None) %}
+  {% for t in txns %}
+    {%- if t.date != ns.cur_date -%}
+      {%- set ns.cur_date = t.date -%}
+      <div class="txn-dg">
+        <span>{{ t.date.strftime('%Y년 %m월 %d일') }}</span>
+        <span>
+          {%- set di = txns | selectattr('date','eq',t.date) | selectattr('type','eq','income')  | sum(attribute='amount') -%}
+          {%- set de = txns | selectattr('date','eq',t.date) | selectattr('type','eq','expense') | sum(attribute='amount') -%}
+          {%- if di > 0 %}<span style="color:var(--green)">+{{ '{:,.0f}'.format(di) }}</span>{% endif %}
+          {%- if de > 0 %} <span style="color:var(--red)">-{{ '{:,.0f}'.format(de) }}</span>{% endif %}
+        </span>
+      </div>
+    {%- endif %}
+    <div class="txn-row">
+      <div class="cat-badge" style="background:{{ t.category.color if t.category else '#aaa' }}22">
+        {{ t.category.icon if t.category else '📌' }}
+      </div>
+      <div class="txn-info">
+        <div class="txn-desc">{{ t.description }}</div>
+        <div class="txn-sub">
+          {{ t.category.name if t.category else '미분류' }}{% if t.memo %} · {{ t.memo }}{% endif %}
+        </div>
+      </div>
+      <div class="txn-amt {{ t.type }}">
+        {{ '+' if t.type=='income' else '-' }}{{ '{:,.0f}'.format(t.amount) }}원
+      </div>
+      <div class="txn-acts">
+        <a href="{{ url_for('transactions.edit', tid=t.id) }}" class="btn btn-outline-secondary btn-xs">
+          <i class="fa-solid fa-pen"></i>
+        </a>
+        <form method="post" action="{{ url_for('transactions.delete', tid=t.id) }}"
+              onsubmit="return confirm('삭제할까요?')" style="display:inline">
+          <button class="btn btn-outline-danger btn-xs"><i class="fa-solid fa-trash"></i></button>
+        </form>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="card-bd">
+    <div class="empty-st">
+      <i class="fa-solid fa-receipt fa-3x mb-3"></i>
+      <div>거래내역이 없습니다</div>
+      <a href="{{ url_for('transactions.add') }}" class="btn btn-primary mt-3">거래 추가하기</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

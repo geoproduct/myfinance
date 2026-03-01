@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>로그인 · MyFinance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="ico">💰</div>
+      <h1>MyFinance</h1>
+      <p>스마트한 개인 재무관리</p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+      <div class="alert alert-{{ 'danger' if cat=='danger' else 'info' }} py-2 mb-3">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="post">
+      <div class="mb-3">
+        <label class="form-label fw-600">이메일</label>
+        <input type="email" name="email" class="form-control" placeholder="example@email.com" required>
+      </div>
+      <div class="mb-4">
+        <label class="form-label fw-600">비밀번호</label>
+        <input type="password" name="password" class="form-control" placeholder="비밀번호 입력" required>
+      </div>
+      <button type="submit" class="btn btn-primary w-100 py-2 fw-700">로그인</button>
+    </form>
+
+    {% if google_enabled or kakao_enabled %}
+    <div class="auth-div my-3"><span>소셜 로그인</span></div>
+    <div class="d-flex flex-column gap-2">
+      {% if google_enabled %}
+      <a href="{{ url_for('auth.google_login') }}" class="btn btn-outline-secondary d-flex align-items-center justify-content-center gap-2 py-2">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+        Google로 로그인
+      </a>
+      {% endif %}
+      {% if kakao_enabled %}
+      <a href="{{ url_for('auth.kakao_login') }}" class="btn d-flex align-items-center justify-content-center gap-2 py-2"
+         style="background:#FEE500;color:#3C1E1E;border:none;font-weight:600">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#3C1E1E" d="M12 3C6.477 3 2 6.477 2 10.8c0 2.7 1.8 5.1 4.5 6.45l-1.15 4.25c-.1.35.3.65.6.45L10.5 19.2c.5.05 1 .1 1.5.1 5.523 0 10-3.477 10-7.8S17.523 3 12 3z"/></svg>
+        카카오로 로그인
+      </a>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="auth-div my-3"><span>또는</span></div>
+    {% endif %}
+
+    <div class="text-center mt-3">
+      <span class="text-muted" style="font-size:.88rem">계정이 없으신가요?</span>
+      <a href="{{ url_for('auth.signup') }}" class="ms-2 fw-600" style="font-size:.88rem">회원가입</a>
+    </div>
+
+    <div class="text-center mt-3">
+      <a href="{{ url_for('auth.dev_login', uid=1) }}" class="btn btn-outline-secondary btn-sm">
+        <i class="fa-solid fa-flask"></i> 데모 계정으로 체험
+      </a>
+    </div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

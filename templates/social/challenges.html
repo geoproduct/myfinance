@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block title %}챌린지 · MyFinance{% endblock %}
+{% block page_title %}챌린지{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- 챌린지 목록 -->
+  <div class="col-lg-8">
+    {% if challenges %}
+      {% for ch in challenges %}
+      <div class="card mb-3 hcard">
+        <div class="card-bd">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+              <h6 class="mb-1 fw-700">🏆 {{ ch.title }}</h6>
+              <div class="text-muted" style="font-size:.8rem">
+                {{ ch.period_start.strftime('%Y.%m.%d') }} ~ {{ ch.period_end.strftime('%Y.%m.%d') }}
+              </div>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+              <span class="badge bg-warning text-dark">{{ ch.members.count() }}명 참여</span>
+              {% if ch.id not in joined %}
+              <form method="post" action="{{ url_for('social.join_challenge', cid=ch.id) }}">
+                <button type="submit" class="btn btn-primary btn-sm">참가</button>
+              </form>
+              {% else %}
+              <a href="{{ url_for('social.challenge_detail', cid=ch.id) }}"
+                 class="btn btn-outline-primary btn-sm">보기</a>
+              {% endif %}
+            </div>
+          </div>
+          {% if ch.description %}
+          <p class="text-muted mb-2" style="font-size:.84rem">{{ ch.description }}</p>
+          {% endif %}
+          <div class="d-flex justify-content-between" style="font-size:.82rem;color:var(--muted)">
+            <span>목표: {{ '{:,.0f}'.format(ch.target_amount) }}원</span>
+            <span>D-{{ (ch.period_end - today).days }}일</span>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="card">
+      <div class="card-bd">
+        <div class="empty-st">
+          <i class="fa-solid fa-trophy fa-3x mb-3"></i>
+          <div>진행 중인 챌린지가 없습니다</div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 챌린지 만들기 -->
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-hd">🏅 챌린지 만들기</div>
+      <div class="card-bd">
+        <form method="post" action="{{ url_for('social.create_challenge') }}">
+          <div class="mb-3">
+            <label class="form-label fw-600">챌린지명 <span class="text-danger">*</span></label>
+            <input type="text" name="title" class="form-control" placeholder="예: 3월 외식비 절약" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-600">설명</label>
+            <textarea name="description" class="form-control" rows="2"
+                      placeholder="챌린지 소개"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-600">목표 금액 (원) <span class="text-danger">*</span></label>
+            <div class="amt-wrap">
+              <input type="text" name="target_amount" class="form-control pe-5"
+                     oninput="fmtNum(this)" placeholder="0" required>
+              <span class="amt-unit">원</span>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label fw-600">시작일</label>
+              <input type="date" name="period_start" class="form-control form-control-sm"
+                     value="{{ today.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-600">종료일</label>
+              <input type="date" name="period_end" class="form-control form-control-sm" required>
+            </div>
+          </div>
+          <div class="mb-4">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="is_public" id="pubCheck" checked>
+              <label class="form-check-label" for="pubCheck" style="font-size:.87rem">공개 챌린지</label>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-warning w-100 fw-700">만들기</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

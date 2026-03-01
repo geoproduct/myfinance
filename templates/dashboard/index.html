@@ -1,0 +1,185 @@
+{% extends 'base.html' %}
+{% block title %}대시보드 · MyFinance{% endblock %}
+{% block page_title %}대시보드{% endblock %}
+
+{% block content %}
+<!-- 스탯 카드 4개 -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="scard scard-blue">
+      <div class="sc-icon"><i class="fa-solid fa-arrow-trend-up"></i></div>
+      <div>
+        <div class="sc-label">이번달 수입</div>
+        <div class="sc-val">{{ '{:,.0f}'.format(inc) }}<span class="sc-unit">원</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="scard scard-red">
+      <div class="sc-icon"><i class="fa-solid fa-arrow-trend-down"></i></div>
+      <div>
+        <div class="sc-label">이번달 지출</div>
+        <div class="sc-val">{{ '{:,.0f}'.format(exp) }}<span class="sc-unit">원</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="scard scard-green">
+      <div class="sc-icon"><i class="fa-solid fa-piggy-bank"></i></div>
+      <div>
+        <div class="sc-label">이번달 저축</div>
+        <div class="sc-val">{{ '{:,.0f}'.format(bal) }}<span class="sc-unit">원</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="scard scard-purple">
+      <div class="sc-icon"><i class="fa-solid fa-building-columns"></i></div>
+      <div>
+        <div class="sc-label">총 자산</div>
+        <div class="sc-val">{{ '{:,.0f}'.format(total_assets // 10000) }}<span class="sc-unit">만원</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- 월별 바 차트 -->
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-hd">📊 월별 수입/지출 추이</div>
+      <div class="card-bd">
+        <canvas id="barChart" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- 카테고리 도넛 -->
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-hd">🍩 이번달 지출 분류</div>
+      <div class="card-bd d-flex flex-column align-items-center">
+        <canvas id="donutChart" style="max-width:200px;max-height:200px"></canvas>
+        <div class="mt-3 w-100" id="donutLegend"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 예산 현황 -->
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-hd d-flex justify-content-between align-items-center">
+        <span>📋 이번달 예산 현황</span>
+        <a href="{{ url_for('budget.index') }}" class="btn btn-link btn-sm p-0">전체보기</a>
+      </div>
+      <div class="card-bd">
+        {% if budget_items %}
+          {% for it in budget_items %}
+          <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1" style="font-size:.84rem">
+              <span>{{ it.b.category.icon if it.b.category else '📌' }} {{ it.b.category.name if it.b.category else '미분류' }}</span>
+              <span class="text-muted">{{ '{:,.0f}'.format(it.spent) }} / {{ '{:,.0f}'.format(it.b.amount) }}원</span>
+            </div>
+            <div class="progress" style="height:8px;border-radius:4px">
+              <div class="progress-bar {% if it.pct >= 100 %}bg-danger{% elif it.pct >= 80 %}bg-warning{% else %}bg-primary{% endif %}"
+                   style="width:{{ it.pct }}%"></div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty-st">
+            <i class="fa-solid fa-wallet fa-2x mb-2"></i><br>
+            예산을 설정해 보세요
+          </div>
+        {% endif %}
+        <a href="{{ url_for('budget.index') }}" class="btn btn-outline-primary btn-sm w-100 mt-2">예산 관리</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 최근 거래 -->
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-hd d-flex justify-content-between align-items-center">
+        <span>🕐 최근 거래내역</span>
+        <a href="{{ url_for('transactions.index') }}" class="btn btn-link btn-sm p-0">전체보기</a>
+      </div>
+      {% if recent %}
+      <ul class="txn-list mb-0">
+        {% for t in recent %}
+        <li class="txn-li">
+          <div class="cat-badge" style="background:{{ t.category.color if t.category else '#aaa' }}22">
+            {{ t.category.icon if t.category else '📌' }}
+          </div>
+          <div class="txn-info">
+            <div class="txn-desc">{{ t.description }}</div>
+            <div class="txn-sub">{{ t.category.name if t.category else '미분류' }} · {{ t.date.strftime('%m/%d') }}</div>
+          </div>
+          <div class="txn-amt {{ t.type }}">
+            {{ '+' if t.type=='income' else '-' }}{{ '{:,.0f}'.format(t.amount) }}원
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="card-bd">
+        <div class="empty-st">
+          <i class="fa-solid fa-receipt fa-2x mb-2"></i><br>
+          거래내역이 없습니다
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const monthly   = {{ monthly    | tojson }};
+const catData   = {{ cat_data   | tojson }};
+
+// 바 차트
+new Chart(document.getElementById('barChart'), {
+  type: 'bar',
+  data: {
+    labels: monthly.map(x => x.label),
+    datasets: [
+      { label: '수입', data: monthly.map(x => x.income),  backgroundColor: '#1BC5BD88', borderRadius: 6 },
+      { label: '지출', data: monthly.map(x => x.expense), backgroundColor: '#F64E6088', borderRadius: 6 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { position: 'top' } },
+    scales: { y: { ticks: { callback: v => (v/10000).toFixed(0) + '만' } } }
+  }
+});
+
+// 도넛 차트
+const defColors = ['#3699FF','#1BC5BD','#F64E60','#FFA800','#8950FC','#E83E8C'];
+if (catData.length > 0) {
+  const colors = catData.map((x, i) => x.color || defColors[i % defColors.length]);
+  new Chart(document.getElementById('donutChart'), {
+    type: 'doughnut',
+    data: {
+      labels: catData.map(x => x.name),
+      datasets: [{ data: catData.map(x => x.total), backgroundColor: colors, borderWidth: 2 }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, cutout: '65%' }
+  });
+  const lg = document.getElementById('donutLegend');
+  const total = catData.reduce((a, b) => a + b.total, 0);
+  catData.forEach((x, i) => {
+    const pct = total > 0 ? Math.round(x.total / total * 100) : 0;
+    lg.innerHTML += `<div class="d-flex justify-content-between align-items-center mb-1" style="font-size:.8rem">
+      <span><span class="legend-dot me-1" style="background:${colors[i]}"></span>${x.name}</span>
+      <span class="text-muted">${pct}%</span>
+    </div>`;
+  });
+} else {
+  document.getElementById('donutChart').parentElement.innerHTML =
+    '<div class="empty-st"><i class="fa-solid fa-chart-pie fa-2x mb-2"></i><br>지출 데이터 없음</div>';
+}
+</script>
+{% endblock %}

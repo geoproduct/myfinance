@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+*.so
+
+# 가상환경
+venv/
+.venv/
+env/
+.env/
+
+# 환경변수 (절대 커밋하지 말 것)
+.env
+.env.local
+.env.production
+
+# DB (로컬 SQLite)
+instance/
+*.db
+*.sqlite3
+
+# VAPID 키 (Railway 환경변수로 관리)
+.vapid_keys.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# 업로드 파일
+static/img/uploads/
+
+# 로그
+*.log
+logs/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/

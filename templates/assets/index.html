@@ -1,0 +1,325 @@
+{% extends 'base.html' %}
+{% block title %}자산관리 · MyFinance{% endblock %}
+{% block page_title %}자산관리{% endblock %}
+
+{% block content %}
+<!-- 총 자산 배너 -->
+<div class="asset-banner mb-4">
+  <div>
+    <div style="opacity:.8;font-size:.88rem;margin-bottom:6px">총 자산 (KRW 환산)</div>
+    <div class="asset-total">
+      {{ '{:,.0f}'.format(total // 10000) }}<span class="unit">만원</span>
+    </div>
+  </div>
+  <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#addModal">
+    <i class="fa-solid fa-plus"></i> 자산 추가
+  </button>
+</div>
+
+<div class="row g-4">
+  <!-- 자산 목록 -->
+  <div class="col-lg-7">
+    {% if summary %}
+      {% for g in summary %}
+      <div class="card mb-3">
+        <div class="card-hd d-flex justify-content-between align-items-center">
+          <span>{{ g.icon }} {{ g.label }}</span>
+          <div class="d-flex align-items-center gap-2">
+            <span style="font-size:.83rem;color:var(--muted)">{{ '{:,.0f}'.format(g.total//10000) }}만원</span>
+            <span class="badge bg-primary bg-opacity-10 text-primary">{{ g.pct }}%</span>
+          </div>
+        </div>
+        <div class="card-bd p-0">
+          {% for a in g.assets %}
+          <div class="d-flex align-items-center gap-3 px-4 py-3 border-bottom">
+            <div class="flex-fill">
+              <div class="fw-600" style="font-size:.9rem">{{ a.name }}</div>
+              <div class="text-muted" style="font-size:.76rem">
+                {{ a.bank_name or '' }}
+                {{ a.currency }}
+                {{ '{:,.0f}'.format(a.amount) }}
+              </div>
+            </div>
+            <div class="fw-700" style="font-size:.92rem">
+              {{ '{:,.0f}'.format(a.amount // 10000 if a.currency=='KRW' else a.amount) }}
+              {{ '만원' if a.currency=='KRW' else a.currency }}
+            </div>
+            <div class="d-flex gap-1">
+              <button class="btn btn-outline-secondary btn-xs"
+                      onclick="openEdit({{ a.id }},'{{ a.name }}','{{ a.type }}',{{ a.amount }},'{{ a.currency }}','{{ a.bank_name or '' }}','{{ a.note or '' }}')">
+                <i class="fa-solid fa-pen"></i>
+              </button>
+              <form method="post" action="{{ url_for('assets.delete', aid=a.id) }}"
+                    onsubmit="return confirm('삭제할까요?')">
+                <button class="btn btn-outline-danger btn-xs">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="card">
+      <div class="card-bd">
+        <div class="empty-st">
+          <i class="fa-solid fa-building-columns fa-3x mb-3"></i>
+          <div>등록된 자산이 없습니다</div>
+          <button class="btn btn-primary mt-3" data-bs-toggle="modal" data-bs-target="#addModal">
+            자산 추가하기
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 차트 -->
+  <div class="col-lg-5">
+    <!-- 자산 구성 파이 -->
+    <div class="card mb-4">
+      <div class="card-hd">🥧 자산 구성</div>
+      <div class="card-bd d-flex flex-column align-items-center">
+        <canvas id="pieChart" style="max-width:200px;max-height:200px"></canvas>
+        <div class="mt-3 w-100" id="pieLegend"></div>
+      </div>
+    </div>
+    <!-- 자산 변화 라인 -->
+    <div class="card">
+      <div class="card-hd">📈 월별 자산 변화</div>
+      <div class="card-bd">
+        <canvas id="lineChart" height="160"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 오픈뱅킹 연결 계좌 섹션 -->
+{% if linked %}
+<div class="card mt-4">
+  <div class="card-hd d-flex justify-content-between align-items-center">
+    <span>🔗 오픈뱅킹 연결 계좌</span>
+    <div class="d-flex align-items-center gap-2">
+      <span style="font-size:.83rem;color:var(--muted)">{{ '{:,.0f}'.format(linked_total//10000) }}만원</span>
+      <a href="{{ url_for('openbanking.index') }}" class="btn btn-outline-primary btn-xs">
+        <i class="fa-solid fa-arrow-right-arrow-left me-1"></i>관리
+      </a>
+    </div>
+  </div>
+  <div class="card-bd p-0">
+    {% for acc in linked %}
+    <div class="d-flex align-items-center gap-3 px-4 py-3 border-bottom">
+      <div style="font-size:1.4rem">🏦</div>
+      <div class="flex-fill">
+        <div class="fw-600" style="font-size:.9rem">{{ acc.bank_name }}</div>
+        <div class="text-muted" style="font-size:.76rem">
+          {{ '입출금' if acc.account_type == 'checking' else ('저축' if acc.account_type == 'savings' else '신용카드') }}
+          · {{ acc.account_num }}
+          {% if acc.last_sync %}· 동기화 {{ acc.last_sync.strftime('%m/%d') }}{% endif %}
+        </div>
+      </div>
+      <div class="fw-700 text-primary" style="font-size:.92rem">
+        {{ '{:,.0f}'.format(acc.balance // 10000) }}만원
+      </div>
+    </div>
+    {% endfor %}
+    <div class="d-flex justify-content-between align-items-center px-4 py-2" style="background:var(--bg2)">
+      <span class="text-muted" style="font-size:.82rem">연결 계좌 합계</span>
+      <span class="fw-700 text-primary">{{ '{:,.0f}'.format(linked_total//10000) }}만원</span>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="card mt-4">
+  <div class="card-bd d-flex align-items-center justify-content-between py-3 px-4">
+    <div class="text-muted" style="font-size:.88rem">
+      <i class="fa-solid fa-link me-2"></i>오픈뱅킹 계좌를 연결하면 잔액이 자산에 포함됩니다
+    </div>
+    <a href="{{ url_for('openbanking.index') }}" class="btn btn-primary btn-sm">계좌 연결</a>
+  </div>
+</div>
+{% endif %}
+
+<!-- 자산 추가 모달 -->
+<div class="modal fade" id="addModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title">자산 추가</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <form method="post" action="{{ url_for('assets.add') }}">
+    <div class="modal-body">
+      <div class="mb-3">
+        <label class="form-label fw-600">자산명 <span class="text-danger">*</span></label>
+        <input type="text" name="name" class="form-control" placeholder="예: 국민은행 입출금" required>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-6">
+          <label class="form-label fw-600">유형</label>
+          <select name="type" class="form-select">
+            {% for k,v in types.items() %}
+            <option value="{{ k }}">{{ v[0] }} {{ v[1] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6">
+          <label class="form-label fw-600">통화</label>
+          <select name="currency" class="form-select">
+            {% for c in currencies %}
+            <option value="{{ c }}" {% if c=='KRW' %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-600">금액 <span class="text-danger">*</span></label>
+        <div class="amt-wrap">
+          <input type="text" name="amount" class="form-control pe-5"
+                 oninput="fmtNum(this)" placeholder="0" required>
+          <span class="amt-unit">원</span>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-600">금융기관</label>
+        <input type="text" name="bank_name" class="form-control" placeholder="예: 국민은행">
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-600">메모</label>
+        <input type="text" name="note" class="form-control" placeholder="추가 정보">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+      <button type="submit" class="btn btn-primary">추가</button>
+    </div>
+    </form>
+  </div></div>
+</div>
+
+<!-- 자산 수정 모달 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title">자산 수정</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <form method="post" id="editForm" action="">
+    <div class="modal-body">
+      <div class="mb-3">
+        <label class="form-label fw-600">자산명</label>
+        <input type="text" name="name" id="e_name" class="form-control" required>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-6">
+          <label class="form-label fw-600">유형</label>
+          <select name="type" id="e_type" class="form-select">
+            {% for k,v in types.items() %}
+            <option value="{{ k }}">{{ v[0] }} {{ v[1] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6">
+          <label class="form-label fw-600">통화</label>
+          <select name="currency" id="e_currency" class="form-select">
+            {% for c in currencies %}
+            <option value="{{ c }}">{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-600">금액</label>
+        <div class="amt-wrap">
+          <input type="text" name="amount" id="e_amount" class="form-control pe-5"
+                 oninput="fmtNum(this)" required>
+          <span class="amt-unit">원</span>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-600">금융기관</label>
+        <input type="text" name="bank_name" id="e_bank" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-600">메모</label>
+        <input type="text" name="note" id="e_note" class="form-control">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+      <button type="submit" class="btn btn-primary">수정</button>
+    </div>
+    </form>
+  </div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const summaryJ = {{ summary_j | tojson }};
+const snapsJ   = {{ snaps_j   | tojson }};
+
+// 파이 차트
+const colors = ['#3699FF','#1BC5BD','#F64E60','#FFA800','#8950FC','#E83E8C','#20C997'];
+if (summaryJ.length > 0) {
+  new Chart(document.getElementById('pieChart'), {
+    type: 'doughnut',
+    data: {
+      labels: summaryJ.map(x => x.icon + ' ' + x.label),
+      datasets: [{ data: summaryJ.map(x => x.total), backgroundColor: colors, borderWidth: 2 }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, cutout: '60%' }
+  });
+  const lg = document.getElementById('pieLegend');
+  summaryJ.forEach((x, i) => {
+    lg.innerHTML += `<div class="d-flex justify-content-between mb-1" style="font-size:.8rem">
+      <span><span class="legend-dot me-1" style="background:${colors[i%colors.length]}"></span>${x.icon} ${x.label}</span>
+      <span>${x.pct}%</span>
+    </div>`;
+  });
+} else {
+  document.getElementById('pieChart').parentElement.innerHTML =
+    '<div class="empty-st">자산 데이터 없음</div>';
+}
+
+// 라인 차트
+if (snapsJ.length > 0) {
+  new Chart(document.getElementById('lineChart'), {
+    type: 'line',
+    data: {
+      labels: snapsJ.map(x => x.month),
+      datasets: [{
+        label: '총 자산',
+        data: snapsJ.map(x => x.total),
+        borderColor: '#3699FF',
+        backgroundColor: '#3699FF22',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { ticks: { callback: v => (v/10000).toFixed(0)+'만' } } }
+    }
+  });
+} else {
+  document.getElementById('lineChart').parentElement.innerHTML =
+    '<div class="empty-st" style="padding:20px">데이터 없음</div>';
+}
+
+// 수정 모달 열기
+function openEdit(id, name, type, amount, currency, bank, note) {
+  document.getElementById('editForm').action = `/assets/edit/${id}`;
+  document.getElementById('e_name').value = name;
+  document.getElementById('e_type').value = type;
+  document.getElementById('e_amount').value = amount.toLocaleString();
+  document.getElementById('e_currency').value = currency;
+  document.getElementById('e_bank').value = bank;
+  document.getElementById('e_note').value = note;
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+</script>
+{% endblock %}
