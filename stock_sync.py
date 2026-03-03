@@ -321,63 +321,119 @@ def _save_history_to_db(ticker: str, history: list) -> int:
     return saved
 
 
-# ── 6. 미국 주요 주식 수집 (yfinance) ──────────────────────────────────────
+# ── 6. 미국 주식 수집 (S&P 500 전종목 + yfinance 배치) ────────────────────
+
+# ── 6-1. S&P 500 전종목 목록 (Wikipedia) ──────────────────────────────────
+
+def _get_sp500_tickers() -> list:
+    """
+    Wikipedia에서 S&P 500 종목 목록 스크래핑
+    반환: [(ticker, name, sector), ...]
+    """
+    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+    try:
+        r = _session.get(url, timeout=15)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        table = soup.find('table', {'id': 'constituents'})
+        if not table:
+            log.warning('[US] Wikipedia S&P 500 표 찾기 실패')
+            return []
+        body = table.find('tbody') or table
+        result = []
+        for row in body.find_all('tr'):
+            cells = row.find_all('td')
+            if len(cells) < 3:
+                continue
+            ticker = cells[0].get_text(strip=True).replace('.', '-')
+            name   = cells[1].get_text(strip=True)
+            sector = cells[2].get_text(strip=True)
+            if ticker:
+                result.append((ticker, name, sector))
+        log.info(f'[US] S&P 500 목록 수집: {len(result)}개')
+        return result
+    except Exception as e:
+        log.warning(f'[US] S&P 500 목록 수집 실패: {e}')
+        return []
+
+
+# ── 6-2. 배치 OHLCV 다운로드 (50개 청크) ─────────────────────────────────
+
+def _batch_download_us(syms: list, period: str = '3mo') -> dict:
+    """
+    여러 미국 종목의 일봉 이력을 yfinance 배치로 다운로드.
+    50개씩 청크 → MultiIndex DataFrame에서 종목별 분리.
+    반환: {ticker: pd.DataFrame(Open/High/Low/Close/Volume)}
+    """
+    import yfinance as yf
+
+    result   = {}
+    chunk_sz = 50
+
+    for i in range(0, len(syms), chunk_sz):
+        chunk = syms[i:i + chunk_sz]
+        try:
+            raw = yf.download(
+                tickers=chunk,
+                period=period,
+                auto_adjust=True,
+                group_by='ticker',
+                threads=True,
+                progress=False,
+            )
+            for sym in chunk:
+                try:
+                    h = raw[sym] if len(chunk) > 1 else raw
+                    h = h.dropna(how='all')
+                    if not h.empty:
+                        result[sym] = h
+                except (KeyError, TypeError, AttributeError):
+                    pass
+        except Exception as e:
+            log.warning(f'[US batch] 청크 {i}~{i + chunk_sz} 배치 실패: {e}')
+            for sym in chunk:   # 개별 재시도
+                try:
+                    h = yf.Ticker(sym).history(period=period, auto_adjust=True)
+                    if not h.empty:
+                        result[sym] = h
+                except Exception:
+                    pass
+
+        done = min(i + chunk_sz, len(syms))
+        log.info(f'[US batch] OHLCV {done}/{len(syms)} 완료')
+        time.sleep(1)
+
+    return result
+
+
+# ── 6-3. 기본 폴백 목록 (S&P 500 스크래핑 실패 시) ───────────────────────
 
 US_STOCK_LIST = [
     # Big Tech
-    ('AAPL',  'Apple'),
-    ('MSFT',  'Microsoft'),
-    ('NVDA',  'NVIDIA'),
-    ('GOOGL', 'Alphabet'),
-    ('META',  'Meta Platforms'),
-    ('AMZN',  'Amazon'),
-    ('TSLA',  'Tesla'),
-    ('AVGO',  'Broadcom'),
-    ('ORCL',  'Oracle'),
-    ('CRM',   'Salesforce'),
-    ('AMD',   'AMD'),
-    ('INTC',  'Intel'),
-    ('QCOM',  'Qualcomm'),
-    ('TXN',   'Texas Instruments'),
-    ('AMAT',  'Applied Materials'),
+    ('AAPL', 'Apple'), ('MSFT', 'Microsoft'), ('NVDA', 'NVIDIA'),
+    ('GOOGL', 'Alphabet'), ('META', 'Meta Platforms'), ('AMZN', 'Amazon'),
+    ('TSLA', 'Tesla'), ('AVGO', 'Broadcom'), ('ORCL', 'Oracle'),
+    ('CRM', 'Salesforce'), ('AMD', 'AMD'), ('INTC', 'Intel'),
+    ('QCOM', 'Qualcomm'), ('TXN', 'Texas Instruments'), ('AMAT', 'Applied Materials'),
     # Finance
-    ('JPM',   'JPMorgan Chase'),
-    ('BAC',   'Bank of America'),
-    ('WFC',   'Wells Fargo'),
-    ('GS',    'Goldman Sachs'),
-    ('MS',    'Morgan Stanley'),
-    ('V',     'Visa'),
-    ('MA',    'Mastercard'),
+    ('JPM', 'JPMorgan Chase'), ('BAC', 'Bank of America'), ('WFC', 'Wells Fargo'),
+    ('GS', 'Goldman Sachs'), ('MS', 'Morgan Stanley'), ('V', 'Visa'), ('MA', 'Mastercard'),
     # Healthcare
-    ('JNJ',   'Johnson & Johnson'),
-    ('UNH',   'UnitedHealth'),
-    ('LLY',   'Eli Lilly'),
-    ('PFE',   'Pfizer'),
-    ('ABBV',  'AbbVie'),
-    ('MRK',   'Merck'),
+    ('JNJ', 'Johnson & Johnson'), ('UNH', 'UnitedHealth'), ('LLY', 'Eli Lilly'),
+    ('PFE', 'Pfizer'), ('ABBV', 'AbbVie'), ('MRK', 'Merck'),
     # Consumer
-    ('WMT',   'Walmart'),
-    ('COST',  'Costco'),
-    ('PG',    'Procter & Gamble'),
-    ('KO',    'Coca-Cola'),
-    ('PEP',   'PepsiCo'),
-    ('MCD',   "McDonald's"),
-    ('NKE',   'Nike'),
-    # Energy
-    ('XOM',   'ExxonMobil'),
-    ('CVX',   'Chevron'),
-    # Industrial
-    ('CAT',   'Caterpillar'),
-    ('BA',    'Boeing'),
-    # ETF
-    ('SPY',   'S&P 500 ETF'),
-    ('QQQ',   'Nasdaq 100 ETF'),
-    ('VTI',   'Vanguard Total Market ETF'),
+    ('WMT', 'Walmart'), ('COST', 'Costco'), ('PG', 'Procter & Gamble'),
+    ('KO', 'Coca-Cola'), ('PEP', 'PepsiCo'), ('MCD', "McDonald's"), ('NKE', 'Nike'),
+    # Energy / Industrial / ETF
+    ('XOM', 'ExxonMobil'), ('CVX', 'Chevron'), ('CAT', 'Caterpillar'),
+    ('BA', 'Boeing'), ('SPY', 'S&P 500 ETF'), ('QQQ', 'Nasdaq 100 ETF'),
+    ('VTI', 'Vanguard Total Market ETF'),
 ]
 
 
+# ── 6-4. NaN 안전 변환 헬퍼 ──────────────────────────────────────────────
+
 def _safe_cents(val) -> int:
-    """float → cents (×100 int), NaN/None은 0 반환"""
+    """float USD → cents (×100 int), NaN/None은 0 반환"""
     try:
         import math
         v = float(val)
@@ -396,10 +452,12 @@ def _safe_int(val) -> int:
         return 0
 
 
+# ── 6-5. 메인 미국 주식 수집 함수 ────────────────────────────────────────
+
 def sync_us_stocks() -> int:
     """
-    yfinance로 미국 주요 종목 수집 후 DB 저장.
-    가격은 USD × 100 (센트) 로 저장하므로 템플릿에서 ÷100 표시.
+    S&P 500 전종목 수집 (Wikipedia 스크래핑 → yfinance 배치 OHLCV → 개별 지표).
+    가격은 USD × 100 (센트) BigInteger 저장 → 템플릿에서 ÷100 표시.
     시가총액은 USD 그대로 저장.
     app context 내에서 호출해야 함.
     """
@@ -411,18 +469,32 @@ def sync_us_stocks() -> int:
 
     from models import db, Stock, StockDaily
 
-    saved = 0
-    for sym, default_name in US_STOCK_LIST:
-        try:
-            yf_t = yf.Ticker(sym)
-            hist = yf_t.history(period='3mo', auto_adjust=True)
-            if hist.empty:
-                log.warning(f'[US] {sym} 이력 없음, 건너뜀')
-                continue
+    # 1. 종목 목록 확보 (S&P 500 → 실패 시 기본 42개 폴백)
+    tickers_info = _get_sp500_tickers()
+    if not tickers_info:
+        log.warning('[US] S&P 500 수집 실패 → 기본 목록으로 수집')
+        tickers_info = [(sym, name, '') for sym, name in US_STOCK_LIST]
 
-            # ticker.info (느릴 수 있음)
+    log.info(f'[US] 수집 대상: {len(tickers_info)}개')
+
+    syms       = [t[0] for t in tickers_info]
+    name_map   = {t[0]: t[1] for t in tickers_info}
+    sector_map = {t[0]: t[2] for t in tickers_info}
+
+    # 2. OHLCV 배치 다운로드 (50개 청크씩, 빠름)
+    hist_map = _batch_download_us(syms, period='3mo')
+    log.info(f'[US] 이력 수집 완료: {len(hist_map)}/{len(syms)}개')
+
+    # 3. 지표(info) + DB 저장 (종목별 개별 처리)
+    saved = 0
+    for sym, default_name, default_sector in tickers_info:
+        hist = hist_map.get(sym)
+        if hist is None or hist.empty:
+            continue
+        try:
+            # 지표 수집 (느림, rate limit 주의)
             try:
-                info = yf_t.info
+                info = yf.Ticker(sym).info
             except Exception:
                 info = {}
 
@@ -431,9 +503,9 @@ def sync_us_stocks() -> int:
             if not s:
                 s = Stock(ticker=sym)
                 db.session.add(s)
-            s.name   = (info.get('longName') or info.get('shortName') or default_name)
+            s.name   = info.get('longName') or info.get('shortName') or default_name
             s.market = 'US'
-            s.sector = info.get('sector') or ''
+            s.sector = info.get('sector') or default_sector
 
             latest_date = hist.index[-1].date()
 
@@ -445,36 +517,34 @@ def sync_us_stocks() -> int:
                     rec = StockDaily(ticker=sym, date=row_date)
                     db.session.add(rec)
 
-                # USD → cents (NaN 안전 변환)
                 rec.close  = _safe_cents(row_data.get('Close'))
                 rec.open   = _safe_cents(row_data.get('Open'))
                 rec.high   = _safe_cents(row_data.get('High'))
                 rec.low    = _safe_cents(row_data.get('Low'))
                 rec.volume = _safe_int(row_data.get('Volume'))
 
-                # 지표는 최신 날짜 레코드에만 기입
                 if row_date == latest_date:
                     rec.per        = info.get('trailingPE')
                     rec.pbr        = info.get('priceToBook')
-                    rec.eps        = info.get('trailingEps')      # USD
-                    rec.bps        = info.get('bookValue')         # USD/share
+                    rec.eps        = info.get('trailingEps')
+                    rec.bps        = info.get('bookValue')
                     div_yield      = info.get('dividendYield') or 0
                     rec.div        = round(div_yield * 100, 2) if div_yield else None
                     rec.dps        = info.get('lastDividendValue')
-                    rec.market_cap = info.get('marketCap')         # USD
+                    rec.market_cap = info.get('marketCap')
 
             saved += 1
-            log.info(f'[US] {sym} ({s.name}) 저장 완료')
-            time.sleep(0.3)
-
-            if saved % 5 == 0:
+            if saved % 10 == 0:
                 db.session.commit()
+                log.info(f'[US] {saved}/{len(tickers_info)}개 저장 중...')
+
+            time.sleep(0.2)
 
         except Exception as e:
             log.warning(f'[US] {sym} 오류: {e}')
 
     db.session.commit()
-    log.info(f'[US] 수집 완료: {saved}/{len(US_STOCK_LIST)}개')
+    log.info(f'[US] 수집 완료: {saved}/{len(tickers_info)}개')
     return saved
 
 

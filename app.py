@@ -47,6 +47,15 @@ def create_app():
     app.register_blueprint(push_bp,          url_prefix='/push')
     app.register_blueprint(stocks_bp,        url_prefix='/stocks')
 
+    # ── /sw.js – Service Worker는 루트 스코프가 필요하므로 별도 라우트 제공 ──
+    @app.route('/sw.js')
+    def sw_js():
+        from flask import send_from_directory, make_response
+        resp = make_response(send_from_directory(app.static_folder, 'sw.js'))
+        resp.headers['Service-Worker-Allowed'] = '/'
+        resp.headers['Cache-Control']          = 'no-cache, no-store, must-revalidate'
+        return resp
+
     # ── OAuth 초기화 ─────────────────────────────
     init_oauth(app)
 

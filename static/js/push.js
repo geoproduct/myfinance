@@ -30,7 +30,7 @@
   // ── 서비스 워커 등록 ─────────────────────────────────────────────────────
   async function registerSW() {
     try {
-      const reg = await navigator.serviceWorker.register('/static/sw.js', { scope: '/' });
+      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
       console.log('[Push] SW registered:', reg.scope);
       return reg;
     } catch (e) {
