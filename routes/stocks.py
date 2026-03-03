@@ -1,7 +1,8 @@
 """
 routes/stocks.py
-한국 주식 지표 기능 – 전체 라우트
+한국/미국 주식 지표 기능 – 전체 라우트
 """
+import logging
 from flask import (Blueprint, render_template, request, jsonify,
                    redirect, url_for, flash, abort)
 from flask_login import login_required, current_user
@@ -10,6 +11,7 @@ from datetime import date, timedelta
 
 from models import db, Stock, StockDaily, StockWatchlist, StockHolding
 
+log = logging.getLogger(__name__)
 stocks_bp = Blueprint('stocks', __name__, url_prefix='/stocks')
 
 
@@ -19,13 +21,44 @@ def _latest_date():
     return db.session.query(func.max(StockDaily.date)).scalar()
 
 
-def _fmt_cap(won: int | None) -> str:
-    """시가총액 원 → 조/억 단위 문자열"""
-    if not won:
+def _fmt_cap(cap: int | None, market: str = 'KOSPI') -> str:
+    """시가총액 표시: 한국은 조/억, 미국은 T/B/M (USD)"""
+    if not cap:
         return '-'
-    if won >= 1_0000_0000_0000:   # 1조 이상
-        return f"{won / 1_0000_0000_0000:.1f}조"
-    return f"{won / 1_0000_0000:.0f}억"
+    if market == 'US':
+        if cap >= 1_000_000_000_000:
+            return f"${cap / 1_000_000_000_000:.1f}T"
+        if cap >= 1_000_000_000:
+            return f"${cap / 1_000_000_000:.1f}B"
+        return f"${cap / 1_000_000:.0f}M"
+    # KRW
+    if cap >= 1_0000_0000_0000:
+        return f"{cap / 1_0000_0000_0000:.1f}조"
+    return f"{cap / 1_0000_0000:.0f}억"
+
+
+def _ensure_history(ticker: str, market: str):
+    """
+    종목 상세 페이지 진입 시 최근 90일 이력이 10일 미만이면
+    NAVER fchart API에서 자동 수집 (한국 주식만).
+    """
+    if market not in ('KOSPI', 'KOSDAQ'):
+        return
+    cutoff = date.today() - timedelta(days=90)
+    cnt = (StockDaily.query
+           .filter(StockDaily.ticker == ticker,
+                   StockDaily.date >= cutoff)
+           .count())
+    if cnt >= 10:
+        return
+    try:
+        from stock_sync import fetch_history_kr, _save_history_to_db
+        history = fetch_history_kr(ticker, count=90)
+        if history:
+            n = _save_history_to_db(ticker, history)
+            log.info(f'[EnsureHistory] {ticker} {n}일 이력 수집 완료')
+    except Exception as e:
+        log.warning(f'[EnsureHistory] {ticker} 실패: {e}')
 
 
 # ── 1. 종목 리스트 ───────────────────────────────
@@ -95,7 +128,8 @@ def index():
                            fmt_cap=_fmt_cap,
                            q=q, market=market, sector=sector,
                            sort=sort, order=order,
-                           no_data=False)
+                           no_data=False,
+                           markets=['ALL', 'KOSPI', 'KOSDAQ', 'US'])
 
 
 # ── 2. 종목 상세 ─────────────────────────────────
@@ -104,9 +138,12 @@ def index():
 def detail(ticker):
     stock = Stock.query.get_or_404(ticker)
 
+    # 한국 주식: 이력 부족하면 NAVER fchart에서 자동 보완
+    _ensure_history(ticker, stock.market)
+
     daily_data = (StockDaily.query
                   .filter_by(ticker=ticker)
-                  .filter(StockDaily.date >= date.today() - timedelta(days=90))
+                  .filter(StockDaily.date >= date.today() - timedelta(days=95))
                   .order_by(StockDaily.date.asc())
                   .all())
 
@@ -118,10 +155,15 @@ def detail(ticker):
     holding = StockHolding.query.filter_by(
         user_id=current_user.id, ticker=ticker).first()
 
-    # 차트 데이터
-    chart_labels  = [d.date.strftime('%m/%d') for d in daily_data]
-    chart_close   = [d.close for d in daily_data]
-    chart_volume  = [d.volume for d in daily_data]
+    is_us = (stock.market == 'US')
+
+    # 차트 데이터 – US는 cents → USD 변환
+    chart_labels = [d.date.strftime('%m/%d') for d in daily_data]
+    if is_us:
+        chart_close  = [round(d.close / 100, 2) for d in daily_data]
+    else:
+        chart_close  = [d.close for d in daily_data]
+    chart_volume = [d.volume for d in daily_data]
 
     # 전일 대비
     prev_close = daily_data[-2].close if len(daily_data) >= 2 else None
@@ -129,12 +171,16 @@ def detail(ticker):
     if latest and prev_close:
         change     = latest.close - prev_close
         change_pct = change / prev_close * 100
+        if is_us:
+            change     = round(change / 100, 2)    # USD
+            change_pct = round(change_pct, 2)
 
     return render_template('stocks/detail.html',
                            stock=stock,
                            latest=latest,
                            holding=holding,
                            is_watched=is_watched,
+                           is_us=is_us,
                            chart_labels=chart_labels,
                            chart_close=chart_close,
                            chart_volume=chart_volume,
@@ -258,26 +304,40 @@ def portfolio():
                 .all())
 
     rows = []
-    total_eval  = 0
-    total_cost  = 0
     for h, s, d in holdings:
-        close      = d.close if d else 0
-        eval_amt   = close * h.quantity
-        cost_amt   = h.avg_price * h.quantity
-        gain       = eval_amt - cost_amt
-        gain_pct   = (gain / cost_amt * 100) if cost_amt else 0
-        total_eval += eval_amt
-        total_cost += cost_amt
+        is_us = (s.market == 'US')
+        if is_us:
+            # US: close stored as cents → convert to USD
+            close    = round((d.close or 0) / 100, 2) if d else 0.0
+        else:
+            close    = d.close if d else 0
+        eval_amt = close * h.quantity
+        cost_amt = h.avg_price * h.quantity
+        gain     = eval_amt - cost_amt
+        gain_pct = (gain / cost_amt * 100) if cost_amt else 0
         rows.append({
-            'holding': h, 'stock': s, 'daily': d,
-            'close': close, 'eval_amt': eval_amt,
-            'cost_amt': cost_amt, 'gain': gain, 'gain_pct': gain_pct,
+            'holding':  h, 'stock': s, 'daily': d,
+            'close':    close,
+            'eval_amt': eval_amt,
+            'cost_amt': cost_amt,
+            'gain':     gain,
+            'gain_pct': gain_pct,
+            'currency': 'USD' if is_us else 'KRW',
         })
 
-    total_gain     = total_eval - total_cost
-    total_gain_pct = (total_gain / total_cost * 100) if total_cost else 0
+    # KRW / USD 총합 분리
+    kr_rows   = [r for r in rows if r['currency'] == 'KRW']
+    us_rows   = [r for r in rows if r['currency'] == 'USD']
+    kr_eval   = sum(r['eval_amt'] for r in kr_rows)
+    kr_cost   = sum(r['cost_amt'] for r in kr_rows)
+    us_eval   = sum(r['eval_amt'] for r in us_rows)
+    us_cost   = sum(r['cost_amt'] for r in us_rows)
+    kr_gain   = kr_eval - kr_cost
+    us_gain   = us_eval - us_cost
+    kr_gain_pct = (kr_gain / kr_cost * 100) if kr_cost else 0
+    us_gain_pct = (us_gain / us_cost * 100) if us_cost else 0
 
-    # 도넛 차트 데이터
+    # 도넛 차트 (KRW 기준, USD는 별도 표시)
     chart_labels = [r['stock'].name for r in rows]
     chart_data   = [r['eval_amt'] for r in rows]
     chart_colors = ['#3699FF','#0BB783','#FFA800','#F64E60','#8950FC',
@@ -285,10 +345,11 @@ def portfolio():
 
     return render_template('stocks/portfolio.html',
                            rows=rows,
-                           total_eval=total_eval,
-                           total_cost=total_cost,
-                           total_gain=total_gain,
-                           total_gain_pct=total_gain_pct,
+                           kr_rows=kr_rows, us_rows=us_rows,
+                           kr_eval=kr_eval, kr_cost=kr_cost,
+                           kr_gain=kr_gain, kr_gain_pct=kr_gain_pct,
+                           us_eval=us_eval, us_cost=us_cost,
+                           us_gain=us_gain, us_gain_pct=us_gain_pct,
                            latest_date=latest,
                            chart_labels=chart_labels,
                            chart_data=chart_data,

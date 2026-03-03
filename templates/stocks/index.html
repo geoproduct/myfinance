@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h4 class="fw-bold mb-0"><i class="fas fa-chart-line text-primary me-2"></i>한국 주식 지표</h4>
+  <h4 class="fw-bold mb-0"><i class="fas fa-chart-line text-primary me-2"></i>주식 지표</h4>
   {% if latest_date %}
   <small class="text-muted">기준일: {{ latest_date.strftime('%Y-%m-%d') }}</small>
   {% endif %}
@@ -15,7 +15,7 @@
     <i class="fas fa-database fa-3x text-muted mb-3"></i>
     <h5 class="text-muted">주식 데이터가 없습니다</h5>
     <p class="text-muted mb-3">Railway Shell에서 초기 데이터를 수집해 주세요.</p>
-    <code class="bg-light p-2 rounded">python stock_sync.py --init</code>
+    <code class="bg-light p-2 rounded">python stock_sync.py</code>
   </div>
 </div>
 {% else %}
@@ -32,10 +32,12 @@
       </div>
       <div class="col-auto">
         <div class="btn-group btn-group-sm" role="group">
-          {% for m in ['ALL','KOSPI','KOSDAQ','KONEX'] %}
+          {% for m in (markets or ['ALL','KOSPI','KOSDAQ','US']) %}
           <a href="{{ url_for('stocks.index', q=q, market=m, sector=sector, sort=sort, order=order) }}"
              class="btn btn-{% if market==m %}primary{% else %}outline-secondary{% endif %}">
-            {{ '전체' if m=='ALL' else m }}
+            {% if m == 'ALL' %}전체
+            {% elif m == 'US' %}🇺🇸 US
+            {% else %}{{ m }}{% endif %}
           </a>
           {% endfor %}
         </div>
@@ -91,6 +93,7 @@
       </thead>
       <tbody>
         {% for stock, daily in stocks %}
+        {% set is_us = (stock.market == 'US') %}
         <tr>
           <td class="ps-3 text-muted fw-semibold">{{ stock.ticker }}</td>
           <td>
@@ -101,12 +104,21 @@
             <div class="text-muted" style="font-size:.75rem">{{ stock.sector or '' }}</div>
           </td>
           <td class="text-center">
-            <span class="badge bg-{{ 'primary' if stock.market=='KOSPI' else ('success' if stock.market=='KOSDAQ' else 'secondary') }} bg-opacity-10 text-{{ 'primary' if stock.market=='KOSPI' else ('success' if stock.market=='KOSDAQ' else 'secondary') }}">
-              {{ stock.market }}
-            </span>
+            {% if stock.market == 'KOSPI' %}
+              <span class="badge bg-primary bg-opacity-10 text-primary">KOSPI</span>
+            {% elif stock.market == 'KOSDAQ' %}
+              <span class="badge bg-success bg-opacity-10 text-success">KOSDAQ</span>
+            {% elif stock.market == 'US' %}
+              <span class="badge bg-danger bg-opacity-10 text-danger">🇺🇸 US</span>
+            {% else %}
+              <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ stock.market }}</span>
+            {% endif %}
           </td>
           <td class="text-center fw-semibold">
-            {{ '{:,}'.format(daily.close) if daily.close else '-' }}
+            {% if daily.close %}
+              {% if is_us %}${{ '%.2f'|format(daily.close / 100) }}
+              {% else %}{{ '{:,}'.format(daily.close) }}원{% endif %}
+            {% else %}-{% endif %}
           </td>
           <td class="text-center">
             {% if daily.per and daily.per > 0 %}
@@ -123,7 +135,7 @@
               <span class="text-warning fw-semibold">{{ '%.1f'|format(daily.div) }}%</span>
             {% else %}<span class="text-muted">-</span>{% endif %}
           </td>
-          <td class="text-center text-muted">{{ fmt_cap(daily.market_cap) }}</td>
+          <td class="text-center text-muted">{{ fmt_cap(daily.market_cap, stock.market) }}</td>
           <td class="text-center">
             <button class="btn btn-sm btn-link p-0 watch-btn"
                     data-ticker="{{ stock.ticker }}"

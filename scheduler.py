@@ -15,26 +15,37 @@ _KST = pytz.timezone("Asia/Seoul")
 
 
 def _stock_sync_job(app):
-    """스케줄러 콜백 – app context 생성 후 sync 실행"""
+    """스케줄러 콜백 – 한국 주식 (KOSPI/KOSDAQ) 자동 갱신"""
     with app.app_context():
         try:
             from stock_sync import sync_stocks
             count = sync_stocks()
-            log.info(f"[Scheduler] 주식 동기화 완료: {count}개")
+            log.info(f"[Scheduler] 한국 주식 동기화 완료: {count}개")
         except Exception as e:
-            log.error(f"[Scheduler] 주식 동기화 실패: {e}", exc_info=True)
+            log.error(f"[Scheduler] 한국 주식 동기화 실패: {e}", exc_info=True)
+
+
+def _us_sync_job(app):
+    """스케줄러 콜백 – 미국 주식 (yfinance) 자동 갱신"""
+    with app.app_context():
+        try:
+            from stock_sync import sync_us_stocks
+            count = sync_us_stocks()
+            log.info(f"[Scheduler] 미국 주식 동기화 완료: {count}개")
+        except Exception as e:
+            log.error(f"[Scheduler] 미국 주식 동기화 실패: {e}", exc_info=True)
 
 
 def init_scheduler(app):
     """
     백그라운드 스케줄러 초기화.
-    평일(월~금) 18:10 KST 에 KRX 데이터 자동 수집.
-    gunicorn 멀티 워커 환경에서 중복 실행 방지:
-        WERKZEUG_RUN_MAIN == 'true' 체크 없이 Railway에서 단일 워커로 실행.
+    - 한국 주식: 평일(월~금) 18:10 KST (장 마감 후)
+    - 미국 주식: 평일(월~금) 08:00 KST (미국 전일 종가 반영)
     """
     if _scheduler.running:
         return
 
+    # 한국 주식 – 평일 18:10 KST
     _scheduler.add_job(
         func=_stock_sync_job,
         args=[app],
@@ -43,9 +54,24 @@ def init_scheduler(app):
             hour=18, minute=10,
             timezone=_KST
         ),
-        id="stock_sync_daily",
+        id="stock_sync_kr",
         replace_existing=True,
-        misfire_grace_time=3600,   # 1시간 내 재실행 허용
+        misfire_grace_time=3600,
     )
+
+    # 미국 주식 – 평일 08:00 KST (미국 전일 종가 기준)
+    _scheduler.add_job(
+        func=_us_sync_job,
+        args=[app],
+        trigger=CronTrigger(
+            day_of_week="tue-sat",   # 미국 월~금 = KST 화~토
+            hour=8, minute=0,
+            timezone=_KST
+        ),
+        id="stock_sync_us",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
     _scheduler.start()
-    log.info("[Scheduler] 주식 자동 동기화 스케줄러 시작 – 평일 18:10 KST")
+    log.info("[Scheduler] 주식 자동 동기화 스케줄러 시작 – KR 18:10 / US 08:00 KST")

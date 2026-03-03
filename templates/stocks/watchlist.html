@@ -23,6 +23,7 @@
 {% else %}
 <div class="row g-3">
   {% for stock, daily, wl in items %}
+  {% set is_us = (stock.market == 'US') %}
   <div class="col-md-4 col-lg-3">
     <div class="card shadow-sm h-100">
       <div class="card-body">
@@ -30,7 +31,11 @@
           <div>
             <a href="{{ url_for('stocks.detail', ticker=stock.ticker) }}"
                class="text-decoration-none text-dark fw-bold">{{ stock.name }}</a>
-            <div class="text-muted small">{{ stock.ticker }} · {{ stock.market }}</div>
+            <div class="text-muted small">
+              {{ stock.ticker }} ·
+              {% if stock.market == 'US' %}🇺🇸 US
+              {% else %}{{ stock.market }}{% endif %}
+            </div>
           </div>
           <button class="btn btn-sm btn-link p-0 text-warning watch-btn"
                   data-ticker="{{ stock.ticker }}" title="관심 해제">
@@ -39,7 +44,13 @@
         </div>
 
         {% if daily %}
-        <div class="fs-5 fw-bold mb-1">{{ '{:,}'.format(daily.close) }}원</div>
+        <div class="fs-5 fw-bold mb-1">
+          {% if is_us %}
+            ${{ '%.2f'|format(daily.close / 100) }}
+          {% else %}
+            {{ '{:,}'.format(daily.close) }}원
+          {% endif %}
+        </div>
         <div class="row g-2 text-center mt-1">
           <div class="col-6">
             <div class="text-muted" style="font-size:.75rem">PER</div>
@@ -55,7 +66,7 @@
           </div>
           <div class="col-6">
             <div class="text-muted" style="font-size:.75rem">시가총액</div>
-            <div class="fw-semibold">{{ fmt_cap(daily.market_cap) }}</div>
+            <div class="fw-semibold">{{ fmt_cap(daily.market_cap, stock.market) }}</div>
           </div>
         </div>
         {% else %}

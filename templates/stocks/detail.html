@@ -14,7 +14,15 @@
     <h4 class="fw-bold mb-0">
       {{ stock.name }}
       <span class="text-muted fs-6 fw-normal ms-2">{{ stock.ticker }}</span>
-      <span class="badge bg-{{ 'primary' if stock.market=='KOSPI' else ('success' if stock.market=='KOSDAQ' else 'secondary') }} bg-opacity-10 text-{{ 'primary' if stock.market=='KOSPI' else ('success' if stock.market=='KOSDAQ' else 'secondary') }} ms-1">{{ stock.market }}</span>
+      {% if stock.market == 'KOSPI' %}
+        <span class="badge bg-primary bg-opacity-10 text-primary ms-1">KOSPI</span>
+      {% elif stock.market == 'KOSDAQ' %}
+        <span class="badge bg-success bg-opacity-10 text-success ms-1">KOSDAQ</span>
+      {% elif stock.market == 'US' %}
+        <span class="badge bg-danger bg-opacity-10 text-danger ms-1">🇺🇸 US</span>
+      {% else %}
+        <span class="badge bg-secondary bg-opacity-10 text-secondary ms-1">{{ stock.market }}</span>
+      {% endif %}
     </h4>
     <small class="text-muted">{{ stock.sector or '' }}</small>
   </div>
@@ -32,10 +40,20 @@
     <div class="card shadow-sm h-100">
       <div class="card-body text-center">
         <div class="text-muted small mb-1">현재가</div>
-        <div class="fs-3 fw-bold">{{ '{:,}'.format(latest.close) }}원</div>
+        <div class="fs-3 fw-bold">
+          {% if is_us %}
+            ${{ '%.2f'|format(latest.close / 100) }}
+          {% else %}
+            {{ '{:,}'.format(latest.close) }}원
+          {% endif %}
+        </div>
         {% if change is not none %}
         <div class="{% if change >= 0 %}text-danger{% else %}text-primary{% endif %} small fw-semibold">
-          {{ '+' if change >= 0 else '' }}{{ '{:,}'.format(change) }}
+          {% if is_us %}
+            {{ '+' if change >= 0 else '-' }}${{ '%.2f'|format(change|abs) }}
+          {% else %}
+            {{ '+' if change >= 0 else '' }}{{ '{:,}'.format(change|int) }}
+          {% endif %}
           ({{ '+' if change_pct >= 0 else '' }}{{ '%.2f'|format(change_pct) }}%)
         </div>
         {% endif %}
@@ -46,7 +64,7 @@
     <div class="card shadow-sm h-100">
       <div class="card-body text-center">
         <div class="text-muted small mb-1">시가총액</div>
-        <div class="fs-5 fw-bold">{{ fmt_cap(latest.market_cap) }}</div>
+        <div class="fs-5 fw-bold">{{ fmt_cap(latest.market_cap, stock.market) }}</div>
         <div class="text-muted small">거래량 {{ '{:,}'.format(latest.volume) }}</div>
       </div>
     </div>
@@ -65,11 +83,27 @@
           </div>
           <div class="col border-start">
             <div class="text-muted small">EPS</div>
-            <div class="fw-bold fs-5">{{ '{:,}'.format(latest.eps|int) if latest.eps else '-' }}</div>
+            {% if latest.eps %}
+              {% if is_us %}
+                <div class="fw-bold fs-5">${{ '%.2f'|format(latest.eps) }}</div>
+              {% else %}
+                <div class="fw-bold fs-5">{{ '{:,}'.format(latest.eps|int) }}</div>
+              {% endif %}
+            {% else %}
+              <div class="fw-bold fs-5">-</div>
+            {% endif %}
           </div>
           <div class="col border-start">
             <div class="text-muted small">BPS</div>
-            <div class="fw-bold fs-5">{{ '{:,}'.format(latest.bps|int) if latest.bps else '-' }}</div>
+            {% if latest.bps %}
+              {% if is_us %}
+                <div class="fw-bold fs-5">${{ '%.2f'|format(latest.bps) }}</div>
+              {% else %}
+                <div class="fw-bold fs-5">{{ '{:,}'.format(latest.bps|int) }}</div>
+              {% endif %}
+            {% else %}
+              <div class="fw-bold fs-5">-</div>
+            {% endif %}
           </div>
           <div class="col border-start">
             <div class="text-muted small">배당률</div>
@@ -86,9 +120,19 @@
 <div class="card shadow-sm mb-4">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span class="fw-semibold"><i class="fas fa-chart-area text-primary me-2"></i>주가 추이 (90일)</span>
+    {% if chart_labels|length < 5 %}
+    <small class="text-warning"><i class="fas fa-info-circle me-1"></i>이력 데이터 수집 중...</small>
+    {% endif %}
   </div>
   <div class="card-body">
+    {% if chart_labels %}
     <canvas id="priceChart" height="90"></canvas>
+    {% else %}
+    <div class="text-center text-muted py-4">
+      <i class="fas fa-chart-area fa-2x mb-2"></i><br>
+      데이터가 없습니다. 잠시 후 다시 확인해 주세요.
+    </div>
+    {% endif %}
   </div>
 </div>
 
@@ -106,10 +150,12 @@
                value="{{ holding.quantity if holding else '' }}" min="1" required>
       </div>
       <div class="col-md-3">
-        <label class="form-label small text-muted">평균 매수가 (원)</label>
+        <label class="form-label small text-muted">
+          평균 매수가 ({{ '$USD' if is_us else '원' }})
+        </label>
         <input type="number" name="avg_price" class="form-control form-control-sm"
-               value="{{ holding.avg_price|int if holding else (latest.close if latest else '') }}"
-               min="1" step="1" required>
+               value="{{ '%.2f'|format(holding.avg_price) if holding else ('%.2f'|format(latest.close/100) if (is_us and latest) else (latest.close if latest else '')) }}"
+               min="0" step="{{ '0.01' if is_us else '1' }}" required>
       </div>
       <div class="col-auto">
         <button type="submit" class="btn btn-sm btn-success">
@@ -133,9 +179,11 @@
 
 {% block scripts %}
 <script>
+{% if chart_labels %}
 const labels  = {{ chart_labels  | tojson }};
 const prices  = {{ chart_close   | tojson }};
 const volumes = {{ chart_volume  | tojson }};
+const isUS    = {{ 'true' if is_us else 'false' }};
 
 new Chart(document.getElementById('priceChart'), {
   type: 'line',
@@ -158,19 +206,26 @@ new Chart(document.getElementById('priceChart'), {
       legend: { display: false },
       tooltip: {
         callbacks: {
-          label: ctx => `₩${ctx.parsed.y.toLocaleString()}`
+          label: ctx => isUS
+            ? `$${ctx.parsed.y.toFixed(2)}`
+            : `₩${ctx.parsed.y.toLocaleString()}`
         }
       }
     },
     scales: {
       x: { grid: { display: false } },
       y: {
-        ticks: { callback: v => '₩' + v.toLocaleString() },
+        ticks: {
+          callback: v => isUS
+            ? '$' + v.toFixed(2)
+            : '₩' + v.toLocaleString()
+        },
         grid: { color: 'rgba(0,0,0,.05)' }
       }
     }
   }
 });
+{% endif %}
 
 // 관심종목 토글
 document.querySelector('.watch-btn')?.addEventListener('click', async function() {

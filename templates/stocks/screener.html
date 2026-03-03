@@ -54,7 +54,7 @@
           <option value="ALL"    {% if market=='ALL'    %}selected{% endif %}>전체</option>
           <option value="KOSPI"  {% if market=='KOSPI'  %}selected{% endif %}>KOSPI</option>
           <option value="KOSDAQ" {% if market=='KOSDAQ' %}selected{% endif %}>KOSDAQ</option>
-          <option value="KONEX"  {% if market=='KONEX'  %}selected{% endif %}>KONEX</option>
+          <option value="US"     {% if market=='US'     %}selected{% endif %}>🇺🇸 US</option>
         </select>
       </div>
       <div class="col-md-2">
@@ -127,22 +127,39 @@
             <div class="text-muted" style="font-size:.75rem">{{ stock.sector or '' }}</div>
           </td>
           <td class="text-center">
-            <span class="badge bg-{{ 'primary' if stock.market=='KOSPI' else 'success' }} bg-opacity-10 text-{{ 'primary' if stock.market=='KOSPI' else 'success' }}">
-              {{ stock.market }}</span>
+            {% if stock.market == 'KOSPI' %}
+              <span class="badge bg-primary bg-opacity-10 text-primary">KOSPI</span>
+            {% elif stock.market == 'KOSDAQ' %}
+              <span class="badge bg-success bg-opacity-10 text-success">KOSDAQ</span>
+            {% elif stock.market == 'US' %}
+              <span class="badge bg-danger bg-opacity-10 text-danger">🇺🇸 US</span>
+            {% else %}
+              <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ stock.market }}</span>
+            {% endif %}
           </td>
-          <td class="text-center fw-semibold">{{ '{:,}'.format(daily.close) if daily.close else '-' }}</td>
+          <td class="text-center fw-semibold">
+            {% if daily.close %}
+              {% if stock.market == 'US' %}${{ '%.2f'|format(daily.close / 100) }}
+              {% else %}{{ '{:,}'.format(daily.close) }}{% endif %}
+            {% else %}-{% endif %}
+          </td>
           <td class="text-center">
             <span class="badge bg-primary bg-opacity-10 text-primary">{{ '%.1f'|format(daily.per) if daily.per else '-' }}</span>
           </td>
           <td class="text-center">
             <span class="badge bg-success bg-opacity-10 text-success">{{ '%.2f'|format(daily.pbr) if daily.pbr else '-' }}</span>
           </td>
-          <td class="text-center text-muted">{{ '{:,.0f}'.format(daily.eps) if daily.eps else '-' }}</td>
+          <td class="text-center text-muted">
+            {% if daily.eps %}
+              {% if stock.market == 'US' %}${{ '%.2f'|format(daily.eps) }}
+              {% else %}{{ '{:,.0f}'.format(daily.eps) }}{% endif %}
+            {% else %}-{% endif %}
+          </td>
           <td class="text-center">
             {% if daily.div %}<span class="text-warning fw-semibold">{{ '%.1f'|format(daily.div) }}%</span>
             {% else %}<span class="text-muted">-</span>{% endif %}
           </td>
-          <td class="text-center text-muted">{{ fmt_cap(daily.market_cap) }}</td>
+          <td class="text-center text-muted">{{ fmt_cap(daily.market_cap, stock.market) }}</td>
           <td class="text-center">
             <button class="btn btn-sm btn-link p-0 watch-btn" data-ticker="{{ stock.ticker }}">
               <i class="fa{% if stock.ticker in watched %}s text-warning{% else %}r text-muted{% endif %} fa-star"></i>
