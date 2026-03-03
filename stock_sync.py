@@ -376,6 +376,26 @@ US_STOCK_LIST = [
 ]
 
 
+def _safe_cents(val) -> int:
+    """float → cents (×100 int), NaN/None은 0 반환"""
+    try:
+        import math
+        v = float(val)
+        return 0 if math.isnan(v) else int(v * 100)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _safe_int(val) -> int:
+    """float → int, NaN/None은 0 반환"""
+    try:
+        import math
+        v = float(val)
+        return 0 if math.isnan(v) else int(v)
+    except (TypeError, ValueError):
+        return 0
+
+
 def sync_us_stocks() -> int:
     """
     yfinance로 미국 주요 종목 수집 후 DB 저장.
@@ -425,12 +445,12 @@ def sync_us_stocks() -> int:
                     rec = StockDaily(ticker=sym, date=row_date)
                     db.session.add(rec)
 
-                # USD → cents (BigInteger에 int 저장)
-                rec.close  = int((row_data.get('Close')  or 0) * 100)
-                rec.open   = int((row_data.get('Open')   or 0) * 100)
-                rec.high   = int((row_data.get('High')   or 0) * 100)
-                rec.low    = int((row_data.get('Low')    or 0) * 100)
-                rec.volume = int( row_data.get('Volume') or 0)
+                # USD → cents (NaN 안전 변환)
+                rec.close  = _safe_cents(row_data.get('Close'))
+                rec.open   = _safe_cents(row_data.get('Open'))
+                rec.high   = _safe_cents(row_data.get('High'))
+                rec.low    = _safe_cents(row_data.get('Low'))
+                rec.volume = _safe_int(row_data.get('Volume'))
 
                 # 지표는 최신 날짜 레코드에만 기입
                 if row_date == latest_date:
