@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+{% block title %}주식 지표{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="fw-bold mb-0"><i class="fas fa-chart-line text-primary me-2"></i>한국 주식 지표</h4>
+  {% if latest_date %}
+  <small class="text-muted">기준일: {{ latest_date.strftime('%Y-%m-%d') }}</small>
+  {% endif %}
+</div>
+
+{% if no_data %}
+<div class="card shadow-sm">
+  <div class="card-body text-center py-5">
+    <i class="fas fa-database fa-3x text-muted mb-3"></i>
+    <h5 class="text-muted">주식 데이터가 없습니다</h5>
+    <p class="text-muted mb-3">Railway Shell에서 초기 데이터를 수집해 주세요.</p>
+    <code class="bg-light p-2 rounded">python stock_sync.py --init</code>
+  </div>
+</div>
+{% else %}
+
+<!-- 필터 바 -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-center">
+      <div class="col-md-4">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="fas fa-search"></i></span>
+          <input type="text" name="q" class="form-control" placeholder="종목명 또는 코드" value="{{ q }}">
+        </div>
+      </div>
+      <div class="col-auto">
+        <div class="btn-group btn-group-sm" role="group">
+          {% for m in ['ALL','KOSPI','KOSDAQ','KONEX'] %}
+          <a href="{{ url_for('stocks.index', q=q, market=m, sector=sector, sort=sort, order=order) }}"
+             class="btn btn-{% if market==m %}primary{% else %}outline-secondary{% endif %}">
+            {{ '전체' if m=='ALL' else m }}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-md-2">
+        <select name="sector" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">전체 업종</option>
+          {% for s in sectors %}
+          <option value="{{ s }}" {% if sector==s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <select name="sort" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="market_cap" {% if sort=='market_cap' %}selected{% endif %}>시가총액</option>
+          <option value="per"        {% if sort=='per'        %}selected{% endif %}>PER</option>
+          <option value="pbr"        {% if sort=='pbr'        %}selected{% endif %}>PBR</option>
+          <option value="div"        {% if sort=='div'        %}selected{% endif %}>배당률</option>
+          <option value="close"      {% if sort=='close'      %}selected{% endif %}>현재가</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <a href="{{ url_for('stocks.index', q=q, market=market, sector=sector, sort=sort, order='asc' if order=='desc' else 'desc') }}"
+           class="btn btn-sm btn-outline-secondary">
+          <i class="fas fa-sort-{{ 'up' if order=='asc' else 'down' }}"></i>
+        </a>
+      </div>
+      <div class="col-auto ms-auto">
+        <a href="{{ url_for('stocks.screener') }}" class="btn btn-sm btn-outline-primary">
+          <i class="fas fa-filter me-1"></i>스크리너
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 종목 테이블 -->
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0 small">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3">코드</th>
+          <th>종목명</th>
+          <th class="text-center">시장</th>
+          <th class="text-center">현재가</th>
+          <th class="text-center text-primary">PER</th>
+          <th class="text-center text-success">PBR</th>
+          <th class="text-center">배당률</th>
+          <th class="text-center">시가총액</th>
+          <th class="text-center">관심</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for stock, daily in stocks %}
+        <tr>
+          <td class="ps-3 text-muted fw-semibold">{{ stock.ticker }}</td>
+          <td>
+            <a href="{{ url_for('stocks.detail', ticker=stock.ticker) }}"
+               class="text-decoration-none fw-semibold text-dark">
+              {{ stock.name }}
+            </a>
+            <div class="text-muted" style="font-size:.75rem">{{ stock.sector or '' }}</div>
+          </td>
+          <td class="text-center">
+            <span class="badge bg-{{ 'primary' if stock.market=='KOSPI' else ('success' if stock.market=='KOSDAQ' else 'secondary') }} bg-opacity-10 text-{{ 'primary' if stock.market=='KOSPI' else ('success' if stock.market=='KOSDAQ' else 'secondary') }}">
+              {{ stock.market }}
+            </span>
+          </td>
+          <td class="text-center fw-semibold">
+            {{ '{:,}'.format(daily.close) if daily.close else '-' }}
+          </td>
+          <td class="text-center">
+            {% if daily.per and daily.per > 0 %}
+              <span class="badge bg-primary bg-opacity-10 text-primary">{{ '%.1f'|format(daily.per) }}</span>
+            {% else %}<span class="text-muted">-</span>{% endif %}
+          </td>
+          <td class="text-center">
+            {% if daily.pbr and daily.pbr > 0 %}
+              <span class="badge bg-success bg-opacity-10 text-success">{{ '%.2f'|format(daily.pbr) }}</span>
+            {% else %}<span class="text-muted">-</span>{% endif %}
+          </td>
+          <td class="text-center">
+            {% if daily.div and daily.div > 0 %}
+              <span class="text-warning fw-semibold">{{ '%.1f'|format(daily.div) }}%</span>
+            {% else %}<span class="text-muted">-</span>{% endif %}
+          </td>
+          <td class="text-center text-muted">{{ fmt_cap(daily.market_cap) }}</td>
+          <td class="text-center">
+            <button class="btn btn-sm btn-link p-0 watch-btn"
+                    data-ticker="{{ stock.ticker }}"
+                    title="관심종목">
+              <i class="fa{% if stock.ticker in watched %}s text-warning{% else %}r text-muted{% endif %} fa-star"></i>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 페이지네이션 -->
+  {% if pagination and pagination.pages > 1 %}
+  <div class="card-footer d-flex justify-content-center">
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {% if pagination.has_prev %}
+        <li class="page-item">
+          <a class="page-link" href="{{ url_for('stocks.index', page=pagination.prev_num, q=q, market=market, sector=sector, sort=sort, order=order) }}">‹</a>
+        </li>
+        {% endif %}
+        {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+          {% if p %}
+          <li class="page-item {% if p==pagination.page %}active{% endif %}">
+            <a class="page-link" href="{{ url_for('stocks.index', page=p, q=q, market=market, sector=sector, sort=sort, order=order) }}">{{ p }}</a>
+          </li>
+          {% else %}
+          <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endfor %}
+        {% if pagination.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="{{ url_for('stocks.index', page=pagination.next_num, q=q, market=market, sector=sector, sort=sort, order=order) }}">›</a>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.watch-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const ticker = btn.dataset.ticker;
+    const res = await fetch(`/stocks/watchlist/toggle/${ticker}`, {method:'POST',
+      headers:{'X-CSRFToken': '{{ "" }}', 'Content-Type':'application/json'}});
+    const data = await res.json();
+    if (data.ok) {
+      const icon = btn.querySelector('i');
+      if (data.action === 'added') {
+        icon.className = 'fas fa-star text-warning';
+      } else {
+        icon.className = 'far fa-star text-muted';
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

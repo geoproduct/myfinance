@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}관심종목{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="fw-bold mb-0"><i class="fas fa-star text-warning me-2"></i>관심종목</h4>
+  {% if latest_date %}
+  <small class="text-muted">기준일: {{ latest_date.strftime('%Y-%m-%d') }}</small>
+  {% endif %}
+</div>
+
+{% if not items %}
+<div class="card shadow-sm">
+  <div class="card-body text-center py-5">
+    <i class="far fa-star fa-3x text-muted mb-3"></i>
+    <h5 class="text-muted">관심종목이 없습니다</h5>
+    <p class="text-muted">주식 리스트에서 ☆ 버튼을 눌러 추가하세요.</p>
+    <a href="{{ url_for('stocks.index') }}" class="btn btn-primary btn-sm">
+      <i class="fas fa-chart-line me-1"></i>주식 리스트 보기
+    </a>
+  </div>
+</div>
+{% else %}
+<div class="row g-3">
+  {% for stock, daily, wl in items %}
+  <div class="col-md-4 col-lg-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <a href="{{ url_for('stocks.detail', ticker=stock.ticker) }}"
+               class="text-decoration-none text-dark fw-bold">{{ stock.name }}</a>
+            <div class="text-muted small">{{ stock.ticker }} · {{ stock.market }}</div>
+          </div>
+          <button class="btn btn-sm btn-link p-0 text-warning watch-btn"
+                  data-ticker="{{ stock.ticker }}" title="관심 해제">
+            <i class="fas fa-star"></i>
+          </button>
+        </div>
+
+        {% if daily %}
+        <div class="fs-5 fw-bold mb-1">{{ '{:,}'.format(daily.close) }}원</div>
+        <div class="row g-2 text-center mt-1">
+          <div class="col-6">
+            <div class="text-muted" style="font-size:.75rem">PER</div>
+            <div class="fw-semibold text-primary">{{ '%.1f'|format(daily.per) if daily.per else '-' }}</div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted" style="font-size:.75rem">PBR</div>
+            <div class="fw-semibold text-success">{{ '%.2f'|format(daily.pbr) if daily.pbr else '-' }}</div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted" style="font-size:.75rem">배당률</div>
+            <div class="fw-semibold text-warning">{{ '%.1f'|format(daily.div) if daily.div else '-' }}{% if daily.div %}%{% endif %}</div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted" style="font-size:.75rem">시가총액</div>
+            <div class="fw-semibold">{{ fmt_cap(daily.market_cap) }}</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-muted small text-center py-2">데이터 없음</div>
+        {% endif %}
+      </div>
+      <div class="card-footer bg-transparent pt-0 border-0">
+        <a href="{{ url_for('stocks.detail', ticker=stock.ticker) }}"
+           class="btn btn-sm btn-outline-primary w-100">상세 보기</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.watch-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const ticker = btn.dataset.ticker;
+    const res = await fetch(`/stocks/watchlist/toggle/${ticker}`, {method:'POST'});
+    const data = await res.json();
+    if (data.ok) {
+      btn.closest('.col-md-4').remove();
+    }
+  });
+});
+</script>
+{% endblock %}

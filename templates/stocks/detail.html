@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+{% block title %}{{ stock.name }} ({{ stock.ticker }}){% endblock %}
+
+{% block content %}
+<!-- 헤더 -->
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb small mb-1">
+        <li class="breadcrumb-item"><a href="{{ url_for('stocks.index') }}">주식 지표</a></li>
+        <li class="breadcrumb-item active">{{ stock.name }}</li>
+      </ol>
+    </nav>
+    <h4 class="fw-bold mb-0">
+      {{ stock.name }}
+      <span class="text-muted fs-6 fw-normal ms-2">{{ stock.ticker }}</span>
+      <span class="badge bg-{{ 'primary' if stock.market=='KOSPI' else ('success' if stock.market=='KOSDAQ' else 'secondary') }} bg-opacity-10 text-{{ 'primary' if stock.market=='KOSPI' else ('success' if stock.market=='KOSDAQ' else 'secondary') }} ms-1">{{ stock.market }}</span>
+    </h4>
+    <small class="text-muted">{{ stock.sector or '' }}</small>
+  </div>
+  <button class="btn btn-sm {% if is_watched %}btn-warning{% else %}btn-outline-secondary{% endif %} watch-btn"
+          data-ticker="{{ stock.ticker }}">
+    <i class="fa{% if is_watched %}s{% else %}r{% endif %} fa-star me-1"></i>
+    {% if is_watched %}관심 해제{% else %}관심종목 추가{% endif %}
+  </button>
+</div>
+
+<!-- 현재가 카드 -->
+{% if latest %}
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body text-center">
+        <div class="text-muted small mb-1">현재가</div>
+        <div class="fs-3 fw-bold">{{ '{:,}'.format(latest.close) }}원</div>
+        {% if change is not none %}
+        <div class="{% if change >= 0 %}text-danger{% else %}text-primary{% endif %} small fw-semibold">
+          {{ '+' if change >= 0 else '' }}{{ '{:,}'.format(change) }}
+          ({{ '+' if change_pct >= 0 else '' }}{{ '%.2f'|format(change_pct) }}%)
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body text-center">
+        <div class="text-muted small mb-1">시가총액</div>
+        <div class="fs-5 fw-bold">{{ fmt_cap(latest.market_cap) }}</div>
+        <div class="text-muted small">거래량 {{ '{:,}'.format(latest.volume) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="row text-center g-0">
+          <div class="col">
+            <div class="text-muted small">PER</div>
+            <div class="fw-bold text-primary fs-5">{{ '%.1f'|format(latest.per) if latest.per else '-' }}</div>
+          </div>
+          <div class="col border-start">
+            <div class="text-muted small">PBR</div>
+            <div class="fw-bold text-success fs-5">{{ '%.2f'|format(latest.pbr) if latest.pbr else '-' }}</div>
+          </div>
+          <div class="col border-start">
+            <div class="text-muted small">EPS</div>
+            <div class="fw-bold fs-5">{{ '{:,}'.format(latest.eps|int) if latest.eps else '-' }}</div>
+          </div>
+          <div class="col border-start">
+            <div class="text-muted small">BPS</div>
+            <div class="fw-bold fs-5">{{ '{:,}'.format(latest.bps|int) if latest.bps else '-' }}</div>
+          </div>
+          <div class="col border-start">
+            <div class="text-muted small">배당률</div>
+            <div class="fw-bold text-warning fs-5">{{ '%.1f'|format(latest.div) if latest.div else '-' }}{% if latest.div %}%{% endif %}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 차트 -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold"><i class="fas fa-chart-area text-primary me-2"></i>주가 추이 (90일)</span>
+  </div>
+  <div class="card-body">
+    <canvas id="priceChart" height="90"></canvas>
+  </div>
+</div>
+
+<!-- 보유 주식 등록 -->
+<div class="card shadow-sm">
+  <div class="card-header fw-semibold">
+    <i class="fas fa-wallet text-success me-2"></i>내 포트폴리오에 추가
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('stocks.portfolio_save') }}" class="row g-2 align-items-end">
+      <input type="hidden" name="ticker" value="{{ stock.ticker }}">
+      <div class="col-md-3">
+        <label class="form-label small text-muted">수량 (주)</label>
+        <input type="number" name="quantity" class="form-control form-control-sm"
+               value="{{ holding.quantity if holding else '' }}" min="1" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small text-muted">평균 매수가 (원)</label>
+        <input type="number" name="avg_price" class="form-control form-control-sm"
+               value="{{ holding.avg_price|int if holding else (latest.close if latest else '') }}"
+               min="1" step="1" required>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-success">
+          <i class="fas fa-plus me-1"></i>{{ '수정' if holding else '추가' }}
+        </button>
+      </div>
+      {% if holding %}
+      <div class="col-auto">
+        <form method="post" action="{{ url_for('stocks.portfolio_delete', hid=holding.id) }}" class="d-inline"
+              onsubmit="return confirm('삭제하시겠습니까?')">
+          <button type="submit" class="btn btn-sm btn-outline-danger">
+            <i class="fas fa-trash me-1"></i>삭제
+          </button>
+        </form>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const labels  = {{ chart_labels  | tojson }};
+const prices  = {{ chart_close   | tojson }};
+const volumes = {{ chart_volume  | tojson }};
+
+new Chart(document.getElementById('priceChart'), {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [{
+      label: '종가',
+      data: prices,
+      borderColor: '#3699FF',
+      backgroundColor: 'rgba(54,153,255,.1)',
+      borderWidth: 2,
+      pointRadius: 2,
+      fill: true,
+      tension: 0.3,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => `₩${ctx.parsed.y.toLocaleString()}`
+        }
+      }
+    },
+    scales: {
+      x: { grid: { display: false } },
+      y: {
+        ticks: { callback: v => '₩' + v.toLocaleString() },
+        grid: { color: 'rgba(0,0,0,.05)' }
+      }
+    }
+  }
+});
+
+// 관심종목 토글
+document.querySelector('.watch-btn')?.addEventListener('click', async function() {
+  const ticker = this.dataset.ticker;
+  const res = await fetch(`/stocks/watchlist/toggle/${ticker}`, {method:'POST'});
+  const data = await res.json();
+  if (data.ok) location.reload();
+});
+</script>
+{% endblock %}

@@ -35,6 +35,7 @@ def create_app():
     from routes.social       import social_bp
     from routes.openbanking  import openbanking_bp
     from routes.push         import push_bp
+    from routes.stocks       import stocks_bp
 
     app.register_blueprint(auth_bp,          url_prefix='/auth')
     app.register_blueprint(dashboard_bp,     url_prefix='/')
@@ -44,9 +45,14 @@ def create_app():
     app.register_blueprint(social_bp,        url_prefix='/social')
     app.register_blueprint(openbanking_bp,   url_prefix='/openbanking')
     app.register_blueprint(push_bp,          url_prefix='/push')
+    app.register_blueprint(stocks_bp,        url_prefix='/stocks')
 
     # ── OAuth 초기화 ─────────────────────────────
     init_oauth(app)
+
+    # ── 주식 데이터 스케줄러 (평일 18:10 자동 갱신) ──
+    from scheduler import init_scheduler
+    init_scheduler(app)
 
     # ── 전역 템플릿 변수 ──────────────────────────
     @app.context_processor

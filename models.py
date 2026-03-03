@@ -29,6 +29,8 @@ class User(UserMixin, db.Model):
     assets       = db.relationship('Asset',       backref='user', lazy='dynamic')
     posts        = db.relationship('Post',        backref='user', lazy='dynamic')
     notifications= db.relationship('Notification',backref='user', lazy='dynamic')
+    watchlist    = db.relationship('StockWatchlist', backref='user', lazy='dynamic')
+    holdings     = db.relationship('StockHolding',   backref='user', lazy='dynamic')
 
     def set_password(self, pw):
         self.password_hash = generate_password_hash(pw)
@@ -260,6 +262,67 @@ class LinkedAccount(db.Model):
     last_sync    = db.Column(db.DateTime)
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
     user         = db.relationship('User', backref='linked_accounts')
+
+
+# ── 주식 종목 기본 정보 ──────────────────────────
+class Stock(db.Model):
+    __tablename__ = 'stocks'
+    ticker     = db.Column(db.String(10), primary_key=True)   # "005930"
+    name       = db.Column(db.String(100), nullable=False)     # "삼성전자"
+    market     = db.Column(db.String(10))                      # KOSPI/KOSDAQ/KONEX
+    sector     = db.Column(db.String(80))                      # 업종명
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    daily_data = db.relationship('StockDaily',    backref='stock', lazy='dynamic',
+                                 foreign_keys='StockDaily.ticker')
+    wl_entries = db.relationship('StockWatchlist', backref='stock', lazy='dynamic')
+    hd_entries = db.relationship('StockHolding',   backref='stock', lazy='dynamic')
+
+
+# ── 주식 일별 가격 + 지표 ─────────────────────────
+class StockDaily(db.Model):
+    __tablename__ = 'stock_daily'
+    id         = db.Column(db.Integer, primary_key=True)
+    ticker     = db.Column(db.String(10), db.ForeignKey('stocks.ticker'), nullable=False)
+    date       = db.Column(db.Date, nullable=False)
+    # 가격
+    open       = db.Column(db.BigInteger, default=0)
+    high       = db.Column(db.BigInteger, default=0)
+    low        = db.Column(db.BigInteger, default=0)
+    close      = db.Column(db.BigInteger, default=0)
+    volume     = db.Column(db.BigInteger, default=0)
+    # 지표
+    per        = db.Column(db.Float)    # 주가수익비율
+    pbr        = db.Column(db.Float)    # 주가순자산비율
+    eps        = db.Column(db.Float)    # 주당순이익
+    bps        = db.Column(db.Float)    # 주당순자산
+    div        = db.Column(db.Float)    # 배당수익률(%)
+    dps        = db.Column(db.Float)    # 주당배당금
+    market_cap = db.Column(db.BigInteger)  # 시가총액(원)
+    __table_args__ = (db.UniqueConstraint('ticker', 'date', name='uq_stock_daily'),)
+
+
+# ── 관심종목 ─────────────────────────────────────
+class StockWatchlist(db.Model):
+    __tablename__ = 'stock_watchlist'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id'),    nullable=False)
+    ticker     = db.Column(db.String(10), db.ForeignKey('stocks.ticker'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('user_id', 'ticker', name='uq_watchlist'),)
+
+
+# ── 주식 보유 포트폴리오 ──────────────────────────
+class StockHolding(db.Model):
+    __tablename__ = 'stock_holdings'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id'),    nullable=False)
+    ticker     = db.Column(db.String(10), db.ForeignKey('stocks.ticker'), nullable=False)
+    quantity   = db.Column(db.Integer,  default=0)   # 보유 수량
+    avg_price  = db.Column(db.Float,    default=0)   # 평균 매수가
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('user_id', 'ticker', name='uq_holding'),)
 
 
 # ── 웹 푸시 구독 ─────────────────────────────────

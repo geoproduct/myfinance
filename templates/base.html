@@ -58,6 +58,11 @@
         <i class="fa-solid fa-plug-circle-bolt"></i> 오픈뱅킹
       </a>
     </li>
+    <li class="{% if request.blueprint=='stocks' %}on{% endif %}">
+      <a href="{{ url_for('stocks.index') }}">
+        <i class="fa-solid fa-chart-line"></i> 주식 지표
+      </a>
+    </li>
   </ul>
 
   <div class="sb-foot">
