@@ -1,212 +1,272 @@
 """
 stock_sync.py
-KRX(한국거래소) 데이터 수집 및 DB 저장 모듈
-pykrx 사용 – API 키 불필요
+네이버 금융 데이터 수집 및 DB 저장 모듈
+- 종목 리스트 + PER + ROE: NAVER Finance sise_market_sum 스크래핑
+- EPS / BPS / 배당금: NAVER polling API (bps → PBR 계산)
+- 가격 / 거래량 / 시가총액: 동일 API
 
 사용법:
-    python stock_sync.py              # 최근 영업일 데이터
-    python stock_sync.py --date 20260301
-    python stock_sync.py --init       # 최근 30일치 일괄 수집
+    python stock_sync.py                  # 오늘(현재가) 수집
+    python stock_sync.py --init           # 전종목 최초 수집
+    python stock_sync.py --tickers 005930 000660
 """
 import argparse
 import logging
-from datetime import datetime, date, timedelta
+import re
+import time
+from datetime import date
 
-import pandas as pd
-from pykrx import stock as krx
+import requests
+from bs4 import BeautifulSoup
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s [%(levelname)s] %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+)
 log = logging.getLogger(__name__)
 
-
-def get_latest_trading_day(ref: date = None) -> str:
-    """주말을 건너뛴 가장 최근 영업일 (YYYYMMDD)"""
-    d = ref or date.today()
-    while d.weekday() >= 5:      # 토=5, 일=6
-        d -= timedelta(days=1)
-    return d.strftime("%Y%m%d")
-
-
-def _safe_float(val) -> float | None:
-    """0 또는 NaN이면 None 반환"""
-    try:
-        f = float(val)
-        return f if f != 0 else None
-    except (TypeError, ValueError):
-        return None
+# ── HTTP 세션 ─────────────────────────────────────────────────────────────────
+_session = requests.Session()
+_session.headers.update({
+    'User-Agent': (
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) '
+        'Chrome/121.0.0.0 Safari/537.36'
+    ),
+    'Accept-Language': 'ko-KR,ko;q=0.9',
+    'Accept': 'application/json, text/javascript, */*; q=0.01',
+})
 
 
-def _safe_int(val) -> int:
-    try:
-        return int(float(val))
-    except (TypeError, ValueError):
-        return 0
+# ── 1. 종목 리스트 수집 (NAVER sise_market_sum) ──────────────────────────────
 
-
-def sync_stocks(target_date: str = None) -> int:
+def _get_tickers_naver(sosok: int) -> list:
     """
-    전체 종목 기본 정보 + 일별 지표를 수집해 DB에 upsert.
-    app context 내에서 호출해야 함.
+    NAVER 시가총액 페이지 전체 스크래핑
+    sosok: 0=KOSPI, 1=KOSDAQ
+    반환: [{'ticker', 'name', 'market', 'per', 'roe', 'close', 'market_cap'}]
     """
+    market = 'KOSPI' if sosok == 0 else 'KOSDAQ'
+    base   = f'https://finance.naver.com/sise/sise_market_sum.naver?sosok={sosok}'
+    result = []
+
+    # 전체 페이지 수 파악
+    try:
+        r = _session.get(f'{base}&page=1')
+        r.encoding = 'euc-kr'
+        soup = BeautifulSoup(r.text, 'html.parser')
+        pg_tag = soup.select('.pgRR a')
+        last_page = int(re.search(r'page=(\d+)', pg_tag[-1]['href']).group(1)) if pg_tag else 1
+    except Exception as e:
+        log.error(f"[Naver] {market} 페이지 수 조회 실패: {e}")
+        return []
+
+    log.info(f"[Naver] {market} 전체 {last_page}페이지 수집 시작")
+
+    for page in range(1, last_page + 1):
+        try:
+            r = _session.get(f'{base}&page={page}')
+            r.encoding = 'euc-kr'
+            soup = BeautifulSoup(r.text, 'html.parser')
+
+            for row in soup.select('table.type_2 tr'):
+                tds = row.find_all('td')
+                if len(tds) < 12:
+                    continue
+
+                a_tag = tds[1].find('a', class_='tltle')
+                if not a_tag:
+                    continue
+
+                href = a_tag.get('href', '')
+                m = re.search(r'code=(\d{6})', href)
+                if not m:
+                    continue
+
+                ticker = m.group(1)
+                name   = a_tag.get_text(strip=True)
+
+                def _num(td):
+                    txt = td.get_text(strip=True).replace(',', '').replace('%', '')
+                    try:
+                        return float(txt)
+                    except ValueError:
+                        return None
+
+                result.append({
+                    'ticker':     ticker,
+                    'name':       name,
+                    'market':     market,
+                    'close':      int(_num(tds[2]) or 0),
+                    'market_cap': int((_num(tds[6]) or 0) * 1_0000_0000),   # 억원 → 원
+                    'volume':     int(_num(tds[9]) or 0),
+                    'per':        _num(tds[10]),
+                    'roe':        _num(tds[11]),
+                })
+
+            time.sleep(0.3)   # NAVER 요청 간격
+
+        except Exception as e:
+            log.warning(f"[Naver] {market} {page}페이지 파싱 실패: {e}")
+
+    log.info(f"[Naver] {market} 수집 완료: {len(result)}개")
+    return result
+
+
+# ── 2. 개별 지표 수집 (NAVER polling API) ────────────────────────────────────
+
+def _get_fundamental(ticker: str) -> dict:
+    """
+    polling.finance.naver.com 에서 EPS / BPS / 배당금 조회
+    반환: {'eps', 'bps', 'dps', 'close'}
+    """
+    url = (
+        f'https://polling.finance.naver.com/api/realtime'
+        f'?query=SERVICE_ITEM:{ticker}'
+    )
+    try:
+        r = _session.get(url, timeout=5)
+        areas = r.json()['result']['areas']
+        if not areas or not areas[0].get('datas'):
+            return {}
+        d = areas[0]['datas'][0]
+        price = d.get('nv') or d.get('sv') or 0
+        return {
+            'close': int(price),
+            'eps':   float(d['eps']) if d.get('eps') else None,
+            'bps':   float(d['bps']) if d.get('bps') else None,
+            'dps':   float(d['dv'])  if d.get('dv')  else None,
+        }
+    except Exception:
+        return {}
+
+
+def _calc_pbr(close: int, bps) -> float:
+    if bps and float(bps) > 0 and close > 0:
+        return round(close / float(bps), 2)
+    return None
+
+
+def _calc_div(close: int, dps) -> float:
+    if dps and float(dps) > 0 and close > 0:
+        return round(float(dps) / close * 100, 2)
+    return None
+
+
+# ── 3. DB 저장 ───────────────────────────────────────────────────────────────
+
+def _save_to_db(rows: list, target_date: date) -> int:
     from models import db, Stock, StockDaily
 
-    if not target_date:
-        target_date = get_latest_trading_day()
-
-    log.info(f"[StockSync] 시작 – 기준일: {target_date}")
-
-    # ── 1. 전체 종목 코드 + 업종 수집 ─────────────────────────────
-    all_tickers: dict[str, dict] = {}
-
-    for market in ("KOSPI", "KOSDAQ", "KONEX"):
-        try:
-            tickers = krx.get_market_ticker_list(target_date, market=market)
-            log.info(f"[StockSync] {market} 종목 수: {len(tickers)}")
-
-            # 업종 분류
-            try:
-                sector_df = krx.get_market_sector_classifications(
-                    date=target_date, market=market
-                )
-                sector_map = {
-                    str(row["종목코드"]).zfill(6): row["업종명"]
-                    for _, row in sector_df.iterrows()
-                }
-            except Exception:
-                sector_map = {}
-
-            for ticker in tickers:
-                try:
-                    name = krx.get_market_ticker_name(ticker)
-                except Exception:
-                    name = ticker
-                all_tickers[ticker] = {
-                    "name": name,
-                    "market": market,
-                    "sector": sector_map.get(ticker, "기타"),
-                }
-        except Exception as e:
-            log.error(f"[StockSync] {market} 종목 목록 수집 실패: {e}")
-
-    if not all_tickers:
-        log.warning("[StockSync] 수집된 종목 없음 – 영업일이 아닐 수 있음")
-        return 0
-
-    # DB upsert – Stock 기본 정보
-    for ticker, info in all_tickers.items():
-        s = db.session.get(Stock, ticker)
-        if not s:
-            s = Stock(ticker=ticker)
-            db.session.add(s)
-        s.name   = info["name"]
-        s.market = info["market"]
-        s.sector = info["sector"]
-    db.session.commit()
-    log.info(f"[StockSync] 종목 기본정보 저장 완료 – {len(all_tickers)}개")
-
-    # ── 2. 전체 종목 지표 (PER, PBR, EPS, BPS, DIV, DPS) ─────────
-    try:
-        metrics = krx.get_market_fundamental(target_date, target_date, "ALL")
-        log.info(f"[StockSync] 지표 수집 완료 – {len(metrics)}행")
-    except Exception as e:
-        log.error(f"[StockSync] 지표 수집 실패: {e}")
-        metrics = pd.DataFrame()
-
-    # ── 3. 전체 종목 시가총액 ────────────────────────────────────
-    try:
-        caps = krx.get_market_cap(target_date, target_date, "ALL")
-        log.info(f"[StockSync] 시가총액 수집 완료 – {len(caps)}행")
-    except Exception as e:
-        log.error(f"[StockSync] 시가총액 수집 실패: {e}")
-        caps = pd.DataFrame()
-
-    # ── 4. 전체 종목 OHLCV ───────────────────────────────────────
-    try:
-        ohlcv = krx.get_market_ohlcv(target_date, target_date, "ALL")
-        log.info(f"[StockSync] OHLCV 수집 완료 – {len(ohlcv)}행")
-    except Exception as e:
-        log.error(f"[StockSync] OHLCV 수집 실패: {e}")
-        ohlcv = pd.DataFrame()
-
-    # ── 5. StockDaily upsert ─────────────────────────────────────
-    target_date_obj = datetime.strptime(target_date, "%Y%m%d").date()
     saved = 0
-
-    for ticker in all_tickers:
+    for info in rows:
+        ticker = info['ticker']
         try:
+            # Stock 기본 정보 upsert
+            s = db.session.get(Stock, ticker)
+            if not s:
+                s = Stock(ticker=ticker)
+                db.session.add(s)
+            if info.get('name'):
+                s.name = info['name']
+            if info.get('market'):
+                s.market = info['market']
+
+            # StockDaily upsert
             row = StockDaily.query.filter_by(
-                ticker=ticker, date=target_date_obj
+                ticker=ticker, date=target_date
             ).first()
             if not row:
-                row = StockDaily(ticker=ticker, date=target_date_obj)
+                row = StockDaily(ticker=ticker, date=target_date)
                 db.session.add(row)
 
-            # OHLCV
-            if not ohlcv.empty and ticker in ohlcv.index:
-                o = ohlcv.loc[ticker]
-                row.open   = _safe_int(o.get("시가"))
-                row.high   = _safe_int(o.get("고가"))
-                row.low    = _safe_int(o.get("저가"))
-                row.close  = _safe_int(o.get("종가"))
-                row.volume = _safe_int(o.get("거래량"))
-
-            # 지표
-            if not metrics.empty and ticker in metrics.index:
-                m = metrics.loc[ticker]
-                row.per = _safe_float(m.get("PER"))
-                row.pbr = _safe_float(m.get("PBR"))
-                row.eps = _safe_float(m.get("EPS"))
-                row.bps = _safe_float(m.get("BPS"))
-                row.div = _safe_float(m.get("DIV"))
-                row.dps = _safe_float(m.get("DPS"))
-
-            # 시가총액
-            if not caps.empty and ticker in caps.index:
-                row.market_cap = _safe_int(caps.loc[ticker].get("시가총액"))
+            row.close      = info.get('close') or 0
+            row.volume     = info.get('volume') or 0
+            row.market_cap = info.get('market_cap') or 0
+            row.per        = info.get('per')
+            row.eps        = info.get('eps')
+            row.bps        = info.get('bps')
+            row.pbr        = info.get('pbr')
+            row.div        = info.get('div')
+            row.dps        = info.get('dps')
 
             saved += 1
         except Exception as e:
-            log.warning(f"[StockSync] {ticker} 저장 실패: {e}")
+            log.warning(f"[DB] {ticker} 저장 오류: {e}")
 
-        # 500개마다 중간 commit
-        if saved % 500 == 0 and saved > 0:
+        if saved % 200 == 0 and saved > 0:
             db.session.commit()
-            log.info(f"[StockSync] {saved}개 중간 저장...")
+            log.info(f"[DB] {saved}개 중간 저장...")
 
     db.session.commit()
-    log.info(f"[StockSync] 완료 – {saved}/{len(all_tickers)}개 저장")
     return saved
 
 
-def sync_range(days: int = 30):
-    """최근 N 영업일 데이터 일괄 수집 (초기화용)"""
-    d = date.today()
-    collected = 0
-    for _ in range(days * 2):   # 주말 포함 여유있게
-        if d.weekday() < 5:
-            target = d.strftime("%Y%m%d")
-            log.info(f"[StockSync] 날짜 수집: {target}")
-            count = sync_stocks(target)
-            if count > 0:
-                collected += 1
-        d -= timedelta(days=1)
-        if collected >= days:
-            break
-    log.info(f"[StockSync] 범위 수집 완료 – {collected}일")
+# ── 4. 메인 동기화 함수 ──────────────────────────────────────────────────────
+
+def sync_stocks(target_date=None, only_tickers=None) -> int:
+    """
+    전종목 수집 메인 함수.
+    app context 내에서 호출해야 함.
+    """
+    if target_date is None:
+        target_date = date.today()
+
+    log.info(f"[StockSync] 시작 - 기준일: {target_date}")
+
+    if only_tickers:
+        all_rows = []
+        for ticker in only_tickers:
+            data = _get_fundamental(ticker)
+            if data:
+                data['ticker'] = ticker
+                data['name']   = ''
+                data['market'] = ''
+                data['pbr']    = _calc_pbr(data.get('close', 0), data.get('bps'))
+                data['div']    = _calc_div(data.get('close', 0), data.get('dps'))
+                all_rows.append(data)
+    else:
+        all_rows = []
+        for sosok in (0, 1):
+            rows = _get_tickers_naver(sosok)
+            all_rows.extend(rows)
+
+        log.info(f"[StockSync] 종목 리스트 완료: {len(all_rows)}개, 개별 지표 수집 시작...")
+
+        for i, row in enumerate(all_rows):
+            fund = _get_fundamental(row['ticker'])
+            if fund:
+                row['eps'] = fund.get('eps')
+                row['bps'] = fund.get('bps')
+                row['dps'] = fund.get('dps')
+                row['pbr'] = _calc_pbr(row.get('close', 0), fund.get('bps'))
+                row['div'] = _calc_div(row.get('close', 0), fund.get('dps'))
+            else:
+                row.setdefault('eps', None)
+                row.setdefault('bps', None)
+                row.setdefault('dps', None)
+                row.setdefault('pbr', None)
+                row.setdefault('div', None)
+
+            if (i + 1) % 100 == 0:
+                log.info(f"[StockSync] 지표 {i + 1}/{len(all_rows)}...")
+            time.sleep(0.05)
+
+    saved = _save_to_db(all_rows, target_date)
+    log.info(f"[StockSync] 완료 - {saved}개 저장")
+    return saved
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="KRX 주식 데이터 수집")
-    parser.add_argument("--date",  default=None, help="기준일 YYYYMMDD")
-    parser.add_argument("--init",  action="store_true", help="최근 30일 일괄 수집")
-    parser.add_argument("--days",  type=int, default=30, help="--init 시 수집 일수")
+    parser = argparse.ArgumentParser(description="NAVER 주식 데이터 수집")
+    parser.add_argument("--init",    action="store_true", help="전종목 최초 수집")
+    parser.add_argument("--tickers", nargs="+",           help="특정 종목 코드만")
     args = parser.parse_args()
 
     from app import create_app
-    app = create_app()
-    with app.app_context():
-        if args.init:
-            sync_range(args.days)
+    application = create_app()
+    with application.app_context():
+        if args.tickers:
+            sync_stocks(only_tickers=args.tickers)
         else:
-            sync_stocks(args.date)
+            sync_stocks()
